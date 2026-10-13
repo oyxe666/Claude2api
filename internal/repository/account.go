@@ -13,6 +13,7 @@ type Account struct {
 	OrgUUID   string            `json:"org_uuid" gorm:"column:org_uuid"`
 	Cookies   map[string]string `json:"-" gorm:"serializer:json"`
 	Status    string            `json:"status,omitempty"`
+	Quota     AccountQuota      `json:"-" gorm:"column:quota;serializer:json"`
 	CreatedAt time.Time         `json:"created_at"`
 	UpdatedAt time.Time         `json:"updated_at"`
 }
@@ -41,8 +42,9 @@ func AccountByEmail(email string) *Account {
 // UpsertAccount 写入或更新账号。
 func UpsertAccount(a *Account) error {
 	return db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "email"}},
-		UpdateAll: true,
+		Columns: []clause.Column{{Name: "email"}},
+		// 只更新这些列，避免重新导入账号时把 quota（额度快照）清空。
+		DoUpdates: clause.AssignmentColumns([]string{"org_uuid", "cookies", "status", "created_at", "updated_at"}),
 	}).Create(a).Error
 }
 
@@ -53,7 +55,8 @@ func UpdateAccount(email string, mutate func(*Account)) bool {
 		return false
 	}
 	mutate(a)
-	return db.Save(a).Error == nil
+	// Omit("quota")：额度快照只由 UpdateAccountQuota 写，避免这里用读到的旧值覆盖它。
+	return db.Omit("quota").Save(a).Error == nil
 }
 
 // DeleteAccount 删除账号。

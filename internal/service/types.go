@@ -28,10 +28,19 @@ type SseEvent struct {
 		Text        string `json:"text"`
 		Thinking    string `json:"thinking"`
 		PartialJSON string `json:"partial_json"`
+		StopReason  string `json:"stop_reason"`
 	} `json:"delta"`
 	Error struct {
 		Message string `json:"message"`
 	} `json:"error"`
+	// MessageLimit 是 message_limit 事件的原始 JSON，由 quota.go 宽松解析。
+	MessageLimit json.RawMessage `json:"message_limit"`
+	StopReason   string          `json:"stop_reason"`
+	StopDetails  struct {
+		Type        string `json:"type"`
+		Category    string `json:"category"`
+		Explanation string `json:"explanation"`
+	} `json:"stop_details"`
 }
 
 // Prompt 是协议适配层交给上游实现的输入。

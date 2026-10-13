@@ -14,12 +14,28 @@
 > - 本项目依赖 Claude.ai 上游接口，上游接口、风控策略及页面结构的变化都可能导致部分功能失效。
 > - 使用本项目即视为你已充分理解并同意本免责声明；请勿使用重要账号、常用账号或高价值账号进行测试。
 
+## 本改版说明
+
+本项目基于 [basketikun/claude2api](https://github.com/basketikun/claude2api)（MIT 许可证）修改，与原作者无关联。相比原项目的差异：
+
+- **适配 Sonnet 5.5**：去掉会触发上游拦截的 `<think>` 指引，新增 `claude-sonnet-5-5`、`claude-haiku-5-5`。
+- **上游拒绝不再静默**：识别 `stop_reason=refusal` 并返回明确错误，按重试次数换号重试。
+- **额度显示与刷新**：记录每个账号的 5 小时 / 7 天额度，后台提供总览条、进度条、重置倒计时、单个/全部刷新。
+- **号池选号优化**：跳过额度已耗尽的账号；上游空回复视为失败并换号重试。
+- 新增对应的单元测试。
+
+已知限制：
+
+- 额度查询用的是 claude.ai 未公开的内部接口，随时可能变化；付费账号上未实测。免费账号该接口无数据，刷新额度时会额外发一条最短对话（约消耗 1 条消息）。
+- “跳过耗尽账号”和“空回复重试”目前只有单元测试，没有线上真实触发验证。
+- 额度只在对话后更新，页面不会自动刷新，需按 F5。
+
 ## 快速开始
 
 Docker Compose 一键部署
 
 ```bash
-git clone https://github.com/basketikun/claude2api.git
+git clone https://github.com/oyxe666/Claude2api.git
 cd claude2api
 cp config.example.yaml config.yaml
 docker compose up -d

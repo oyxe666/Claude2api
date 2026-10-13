@@ -105,11 +105,17 @@
             <div class="stats" id="stats"></div>
           </header>
 
+          <div id="quota-overview" class="quota-overview"></div>
+
           <div class="toolbar">
             <button id="btn-refresh" class="btn">刷新</button>
             <button id="btn-refresh-all" class="btn">一键刷新</button>
             <button id="btn-import" class="btn">批量导入</button>
             <button id="btn-del-expired" class="btn">删除失效</button>
+            <div class="seg" role="group" aria-label="账号视图">
+              <button type="button" class="seg-btn active" data-view="cards" aria-pressed="true">卡片</button>
+              <button type="button" class="seg-btn" data-view="table" aria-pressed="false">表格</button>
+            </div>
           </div>
           <div id="refresh-all-progress" class="task-progress hidden">
             <div><span>正在刷新账号</span><span class="task-progress-text"></span></div>
@@ -147,22 +153,26 @@
             </div>
           </div>
 
-          <div class="table-area">
+          <div id="quota-grid" class="quota-grid"><div class="quota-empty">加载中…</div></div>
+
+          <div class="table-area" id="acc-table-area">
             <table class="acc-table">
               <thead>
                 <tr>
                   <th class="col-idx">#</th>
                   <th>邮箱</th>
                   <th>状态</th>
+                  <th>额度（5小时 / 7天）</th>
                   <th>创建日期</th>
                   <th>已存活</th>
                   <th>上次刷新</th>
+                  <th>额度更新</th>
                   <th class="col-act">操作</th>
                 </tr>
               </thead>
               <tbody id="acc-body">
                 <tr>
-                  <td colspan="7" class="empty">加载中…</td>
+                  <td colspan="9" class="empty">加载中…</td>
                 </tr>
               </tbody>
             </table>
@@ -611,6 +621,7 @@
     </div>
     </div>
 
+    <script src="/static/quota.js"></script>
     <script src="/static/app.js"></script>
   </body>
 </html>

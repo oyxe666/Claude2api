@@ -2006,3 +2006,241 @@ body[data-page="login"] .err {
 #pool-key-mask .modal {
   max-width: 380px;
 }
+.quota-line{line-height:1.6;white-space:nowrap}
+.quota-reset{color:var(--muted);font-size:12px}
+.quota-none{color:var(--muted)}
+
+/* ===== 额度总览 / 额度卡片 ===== */
+.quota-overview,
+.quota-grid {
+  --q-high: #7f9f6b;
+  --q-mid: #d6a33f;
+  --q-low: #c4694f;
+  --q-high-text: #4f7040;
+  --q-mid-text: #8a6410;
+  --q-low-text: #a4472f;
+}
+.quota-overview { margin-bottom: 16px; }
+.quota-overview-box {
+  border: 1px solid var(--border);
+  background: #fcfbf7;
+  padding: 16px 18px 12px;
+}
+.quota-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 24px;
+}
+.quota-metric { min-width: 0; }
+.quota-metric-label {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+.quota-metric-value {
+  display: block;
+  margin: 2px 0 6px;
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.quota-metric:last-child .quota-metric-value {
+  font-size: 15px;
+  line-height: 1.7;
+  margin-bottom: 0;
+  word-break: break-word;
+}
+.lv-high { color: var(--q-high-text); }
+.lv-mid { color: var(--q-mid-text); }
+.lv-low { color: var(--q-low-text); }
+.lv-none { color: var(--muted); }
+.quota-overview-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.quota-note { color: var(--muted); font-size: 12px; }
+.quota-overview-act { display: flex; align-items: center; gap: 10px; }
+.quota-progress {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.quota-bar {
+  height: 8px;
+  background: var(--border);
+  overflow: hidden;
+}
+.quota-fill {
+  height: 100%;
+  width: 0;
+  background: var(--border-strong);
+  transition: width 0.3s ease;
+}
+.quota-fill.bar-high { background: var(--q-high); }
+.quota-fill.bar-mid { background: var(--q-mid); }
+.quota-fill.bar-low { background: var(--q-low); }
+
+.quota-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+  margin-bottom: 8px;
+}
+.quota-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: var(--muted);
+  padding: 40px 0;
+}
+.quota-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px 16px 12px;
+  border: 1px solid var(--border-strong);
+  background: #fcfbf7;
+}
+.quota-card.is-failed { border-left: 3px solid var(--q-low); }
+.quota-card.is-expired { border-style: dashed; opacity: 0.72; }
+.quota-card.is-exhausted {
+  background: #efede6;
+  filter: grayscale(0.6);
+  opacity: 0.78;
+}
+.quota-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.quota-email {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+}
+.quota-badges {
+  display: flex;
+  order: 3;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+.quota-badges:empty { display: none; }
+.quota-badge {
+  padding: 0 6px;
+  border: 1px solid var(--border-strong);
+  font-size: 11px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+.quota-badge.b-exhausted { color: var(--err); border-color: var(--err); background: #f7e9e6; }
+.quota-badge.b-failed { color: #fff; background: var(--q-low); border-color: var(--q-low); }
+.quota-badge.b-expired { color: var(--muted); }
+.quota-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-width: 28px;
+  height: 28px;
+  margin-left: auto;
+  padding: 0 6px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.quota-refresh:hover:not(:disabled) { background: var(--hover); color: var(--fg); }
+.quota-refresh:focus-visible,
+.seg-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.quota-refresh:disabled { cursor: not-allowed; opacity: 0.55; }
+.quota-refresh.is-loading { color: var(--accent); opacity: 1; }
+.quota-spin {
+  display: block;
+  width: 13px;
+  height: 13px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+}
+.quota-refresh.is-loading .quota-spin { animation: quota-spin 0.8s linear infinite; }
+@keyframes quota-spin { to { transform: rotate(360deg); } }
+
+.quota-row-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 5px;
+}
+.quota-label { color: var(--muted); font-size: 12px; }
+.quota-val { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.quota-sub { margin-top: 4px; color: var(--muted); font-size: 12px; }
+.quota-fail {
+  padding: 5px 8px;
+  background: #f7e9e6;
+  color: var(--err);
+  font-size: 12px;
+  word-break: break-word;
+}
+.quota-card-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.quota-actions { display: flex; gap: 6px; }
+.quota-updated { color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+/* 卡片 | 表格 切换 */
+.seg { display: inline-flex; margin-left: auto; }
+.seg-btn {
+  padding: 6px 16px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--fg);
+  font-size: 13px;
+  cursor: pointer;
+}
+.seg-btn + .seg-btn { border-left: 0; }
+.seg-btn:hover:not(.active) { background: var(--hover); }
+.seg-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+
+@media (max-width: 720px) {
+  .quota-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 16px; }
+  .quota-metric:last-child { grid-column: 1 / -1; }
+  .quota-grid { grid-template-columns: 1fr; }
+  .seg { margin-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .quota-refresh.is-loading .quota-spin { animation: none; }
+  .quota-refresh.is-loading .quota-spin { display: none; }
+  .quota-refresh.is-loading::after { content: "刷新中"; font-size: 11px; }
+  .quota-fill,
+  .quota-refresh { transition: none; }
+}

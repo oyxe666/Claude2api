@@ -17,6 +17,8 @@ type PublicAccount struct {
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 	HasSession bool      `json:"has_session"`
+	// Quota 是最新额度快照；从未记录过则没有这个键。
+	Quota *repository.AccountQuota `json:"quota,omitempty"`
 }
 
 func SessionKey(account *repository.Account) string {
@@ -42,7 +44,7 @@ func PublicAccountView(account *repository.Account) *PublicAccount {
 	if account == nil {
 		return nil
 	}
-	return &PublicAccount{
+	view := &PublicAccount{
 		Email:      account.Email,
 		OrgUUID:    account.OrgUUID,
 		Status:     account.Status,
@@ -50,6 +52,11 @@ func PublicAccountView(account *repository.Account) *PublicAccount {
 		UpdatedAt:  account.UpdatedAt,
 		HasSession: SessionKey(account) != "",
 	}
+	if !account.Quota.IsZero() {
+		q := account.Quota
+		view.Quota = &q
+	}
+	return view
 }
 
 // PublicAccounts 返回前端账号列表。

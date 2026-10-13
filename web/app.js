@@ -36,6 +36,12 @@ let searchKw = "";
 let curPage = 1;
 let pageSize = 10;
 
+// 账号页视图（卡片 / 表格）与额度刷新状态
+const VIEW_KEY = "claude2api_acc_view";
+let quotaView = localStorage.getItem(VIEW_KEY) === "table" ? "table" : "cards";
+const quotaRefreshing = new Set(); // 正在刷新额度的邮箱（单个或批次中尚未完成的）
+let quotaBatch = { running: false, done: 0, total: 0 };
+
 const CONFIG_FIELDS = [
   "proxy",
   "retry_count",
@@ -200,6 +206,45 @@ function fmtSurvived(t) {
   return `${sec} 秒`;
 }
 
+// 额度窗口一律交给 QuotaUI.windowState，保证与卡片的尺度、已重置判断一致
+function quotaLine(label, w) {
+  const s = QuotaUI.windowState(w, Date.now());
+  if (s.state === "nodata") return "";
+  if (s.state === "reset") {
+    return `<div class="quota-line"><b>${label}</b> <span class="quota-none">已重置</span></div>`;
+  }
+  const over = s.state === "exhausted";
+  const txt = over ? "已耗尽" : `剩余 ${Math.round(s.remaining)}%`;
+  const reset = s.resetsAtMs ? QuotaUI.fmtLocalTime(s.resetsAtMs) : "";
+  return (
+    `<div class="quota-line"><b>${label}</b> <span class="${over ? "pill pill-err" : ""}">${esc(txt)}</span>` +
+    (reset ? ` <span class="quota-reset">重置 ${esc(reset)}</span>` : "") +
+    `</div>`
+  );
+}
+
+// 额度更新时间；Go 零值（0001-）和空都当作暂无
+function quotaUpdatedText(q) {
+  if (!q || !q.updated_at || String(q.updated_at).startsWith("0001-")) return "暂无";
+  return fmtTime(q.updated_at) || "暂无";
+}
+
+// 详情里的“用量”（已用百分比）
+function quotaUsedText(w) {
+  const s = QuotaUI.windowState(w, Date.now());
+  if (s.state === "nodata") return "暂无";
+  if (s.state === "reset") return "已重置";
+  if (s.state === "exhausted") return "100%（已耗尽）";
+  return String(Math.round((100 - s.remaining) * 10) / 10) + "%";
+}
+
+// 没有快照 → 暂无；有快照但两个窗口都没有 → 显示 type
+function quotaCell(q) {
+  if (!q) return `<span class="quota-none">暂无</span>`;
+  const html = quotaLine("5 小时", q.five_hour) + quotaLine("7 天", q.seven_day);
+  return html || `<span class="quota-none">${esc(q.type || "无窗口数据")}</span>`;
+}
+
 function filteredAccounts() {
   const kw = searchKw.trim().toLowerCase();
   return ACCOUNTS.filter((a) => {
@@ -212,17 +257,17 @@ function filteredAccounts() {
   });
 }
 
-function renderTable() {
+function renderTableView() {
   const body = $("#acc-body");
   const rows = filteredAccounts();
 
   if (!ACCOUNTS.length) {
-    body.innerHTML = `<tr><td colspan="7" class="empty">暂无账号</td></tr>`;
+    body.innerHTML = `<tr><td colspan="9" class="empty">暂无账号</td></tr>`;
     $("#pager").innerHTML = "";
     return;
   }
   if (!rows.length) {
-    body.innerHTML = `<tr><td colspan="7" class="empty">没有符合条件的账号</td></tr>`;
+    body.innerHTML = `<tr><td colspan="9" class="empty">没有符合条件的账号</td></tr>`;
     $("#pager").innerHTML = "";
     return;
   }
@@ -237,9 +282,11 @@ function renderTable() {
       <td>${start + i + 1}</td>
       <td class="mono">${esc(a.email)}</td>
       <td>${statusBadge(a.status)}</td>
+      <td>${quotaCell(a.quota)}</td>
       <td class="mono">${esc(fmtTime(a.created_at) || "—")}</td>
       <td>${esc(fmtSurvived(a.created_at))}</td>
       <td class="mono">${esc(fmtTime(a.updated_at) || "—")}</td>
+      <td class="mono">${esc(quotaUpdatedText(a.quota))}</td>
       <td>
         <button class="btn-sm act-refresh">刷新</button>
         <button class="btn-sm act-detail">详情</button>
@@ -283,9 +330,80 @@ function renderPager(total, totalPages) {
   pager.innerHTML = html;
 }
 
+function renderTable() {
+  renderTableView();
+  renderCards();
+}
+
+function applyQuotaView() {
+  const cards = quotaView === "cards";
+  $("#quota-grid").classList.toggle("hidden", !cards);
+  $("#acc-table-area").classList.toggle("hidden", cards);
+  adminRoot.querySelectorAll(".seg-btn").forEach((b) => {
+    const on = b.dataset.view === quotaView;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-pressed", on ? "true" : "false");
+  });
+}
+
+function setQuotaView(v) {
+  quotaView = v === "table" ? "table" : "cards";
+  localStorage.setItem(VIEW_KEY, quotaView);
+  applyQuotaView();
+  renderCards();
+}
+
+function renderOverview() {
+  const box = $("#quota-overview");
+  const now = Date.now();
+  box.textContent = "";
+  box.appendChild(
+    QuotaUI.buildOverview(document, QuotaUI.summarize(ACCOUNTS, now), {
+      nowMs: now,
+      batch: quotaBatch,
+    }),
+  );
+}
+
+// 卡片与表格共用 filteredAccounts() 的同一页切片
+function renderCards() {
+  const grid = $("#quota-grid");
+  grid.textContent = "";
+  if (quotaView !== "cards") return;
+  const rows = filteredAccounts();
+  if (!rows.length) {
+    const d = document.createElement("div");
+    d.className = "quota-empty";
+    d.textContent = ACCOUNTS.length ? "没有符合条件的账号" : "暂无账号";
+    grid.appendChild(d);
+    return;
+  }
+  const start = (curPage - 1) * pageSize;
+  const now = Date.now();
+  const opts = {
+    refreshing: (email) => quotaRefreshing.has(email),
+    locked: quotaBatch.running,
+  };
+  for (const a of rows.slice(start, start + pageSize)) {
+    grid.appendChild(QuotaUI.buildCard(document, a, now, opts));
+  }
+}
+
+function renderQuota() {
+  renderOverview();
+  renderCards();
+}
+
+function mergeAccount(acct) {
+  if (!acct || !acct.email) return;
+  const i = ACCOUNTS.findIndex((x) => x.email === acct.email);
+  if (i >= 0) ACCOUNTS[i] = acct;
+}
+
 function rerender() {
   renderStats();
   renderTable();
+  renderOverview();
 }
 
 async function loadAccounts() {
@@ -397,6 +515,7 @@ async function refreshAccount(email, button) {
 async function refreshAllAccounts() {
   const btn = $("#btn-refresh-all"), count = ACCOUNTS.length;
   if (!count) return showMsg("当前没有可刷新的账号", "ok");
+  if (quotaBatch.running) return showMsg("额度正在刷新中，请稍候", "ok");
   btn.disabled = true;
   btn.textContent = "刷新中…";
   let completed = 0;
@@ -410,11 +529,82 @@ async function refreshAllAccounts() {
     setProgress("#refresh-all-progress", count, count, failed ? `完成，失败 ${failed}` : "刷新完成");
     await loadAccounts();
     showMsg(failed ? `刷新完成：成功 ${count - failed}，失败 ${failed}` : `已刷新 ${count} 个账号`, failed ? "err" : "ok");
+    await refreshAllQuotas();
   } catch (e) {
     showMsg("一键刷新失败: " + e.message, "err");
   } finally {
     btn.disabled = false;
     btn.textContent = "一键刷新";
+  }
+}
+
+async function refreshQuotaOne(email) {
+  if (quotaBatch.running || quotaRefreshing.has(email)) return;
+  quotaRefreshing.add(email);
+  renderCards();
+  try {
+    const r = await api("/api/accounts/quota/refresh", "POST", { email });
+    mergeAccount(r.account);
+    const res = r.result || {};
+    if (res.busy) showMsg(res.error || "账号正在对话中，请稍后再试", "err");
+    else if (!res.ok) showMsg(`${email} 额度查询失败：${r.account?.quota?.error || res.error || "未知原因"}`, "err");
+    else showMsg(`已更新 ${email} 的额度`, "ok");
+  } catch (e) {
+    showMsg("刷新额度失败: " + e.message, "err");
+  } finally {
+    quotaRefreshing.delete(email);
+    rerender();
+  }
+}
+
+async function refreshAllQuotas() {
+  if (quotaBatch.running) return showMsg("额度正在刷新中，请稍候", "ok");
+  const targets = ACCOUNTS.filter((a) => a.has_session !== false && a.status !== "expired").map((a) => a.email);
+  if (!targets.length) return showMsg("没有可刷新额度的账号", "ok");
+  quotaBatch = { running: true, done: 0, total: targets.length };
+  quotaRefreshing.clear();
+  targets.forEach((email) => quotaRefreshing.add(email));
+  renderQuota();
+  let summary = null;
+  try {
+    const r = await api("/api/accounts/quota/refresh-all", "POST", {}, true);
+    const reader = r.body.getReader(), decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+      const events = buffer.split("\n\n");
+      buffer = events.pop();
+      for (const event of events) {
+        const line = event.split("\n").find((l) => l.startsWith("data:"));
+        if (!line) continue;
+        const d = JSON.parse(line.slice(5));
+        if (d.done) {
+          summary = d;
+          continue;
+        }
+        quotaBatch.done = d.completed ?? quotaBatch.done + 1;
+        quotaBatch.total = d.total || quotaBatch.total;
+        quotaRefreshing.delete(d.email);
+        mergeAccount(d.account);
+        rerender();
+      }
+      if (done) break;
+    }
+    await loadAccounts();
+    if (summary) {
+      const extra = summary.skipped ? `，跳过 ${summary.skipped}` : "";
+      showMsg(
+        `额度刷新完成：成功 ${summary.ok}，失败 ${summary.failed}${extra}`,
+        summary.failed || summary.skipped ? "err" : "ok",
+      );
+    }
+  } catch (e) {
+    showMsg("刷新额度失败: " + e.message, "err");
+  } finally {
+    quotaBatch.running = false;
+    quotaRefreshing.clear();
+    renderQuota();
   }
 }
 
@@ -471,6 +661,27 @@ function openDetail(email) {
     ["创建时间", fmtTime(a.created_at) || "—"],
     ["已存活", fmtSurvived(a.created_at)],
     ["更新时间", fmtTime(a.updated_at) || "—"],
+    [
+      "5 小时用量",
+      quotaUsedText(a.quota?.five_hour),
+    ],
+    [
+      "5 小时重置",
+      a.quota?.five_hour?.resets_at
+        ? fmtTime(a.quota.five_hour.resets_at * 1000)
+        : "暂无",
+    ],
+    [
+      "7 天用量",
+      quotaUsedText(a.quota?.seven_day),
+    ],
+    [
+      "7 天重置",
+      a.quota?.seven_day?.resets_at
+        ? fmtTime(a.quota.seven_day.resets_at * 1000)
+        : "暂无",
+    ],
+    ["额度更新", quotaUpdatedText(a.quota)],
   ];
 
   const info = rows
@@ -1122,6 +1333,38 @@ $("#acc-body").addEventListener("click", (e) => {
   else if (e.target.classList.contains("act-detail")) openDetail(email);
   else if (e.target.classList.contains("act-del")) deleteOne(email);
 });
+
+// 额度总览 / 卡片 / 视图切换
+$("#quota-overview").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-act]");
+  if (b && !b.disabled && b.dataset.act === "refresh-all-quota") refreshAllQuotas();
+});
+$("#quota-grid").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-act]");
+  if (!b || b.disabled) return;
+  const email = b.closest(".quota-card")?.dataset.email;
+  if (!email) return;
+  switch (b.dataset.act) {
+    case "refresh-quota": refreshQuotaOne(email); break;
+    case "refresh-acct": refreshAccount(email, b); break;
+    case "detail": openDetail(email); break;
+    case "delete": deleteOne(email); break;
+  }
+});
+$(".seg").addEventListener("click", (e) => {
+  const b = e.target.closest(".seg-btn");
+  if (b) setQuotaView(b.dataset.view);
+});
+applyQuotaView();
+
+// 每 30 秒只重绘额度区文字（倒计时 / “X 分钟前”），不发任何请求
+setInterval(() => {
+  if (document.hidden || $("#page-accounts").classList.contains("hidden")) return;
+  if (quotaBatch.running) return;
+  const ae = document.activeElement;
+  if (ae && ($("#quota-grid").contains(ae) || $("#quota-overview").contains(ae))) return;
+  renderQuota();
+}, 30000);
 
 initPool($("#page-pool"));
 if (currentRole !== "admin") {
