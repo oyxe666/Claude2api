@@ -32,14 +32,18 @@
 
 ## 快速开始
 
-Docker Compose 一键部署
+Docker Compose 本地构建部署（用本仓库的代码构建镜像）：
 
 ```bash
 git clone https://github.com/oyxe666/Claude2api.git
-cd claude2api
+cd Claude2api
 cp config.example.yaml config.yaml
-docker compose up -d
+docker compose -f docker-compose.local.yml up -d --build
 ```
+
+> 注意：仓库自带的 `docker-compose.yml` 拉取的是原作者发布的镜像（`ghcr.io/basketikun/claude2api`），**不包含本改版的改动**。要使用本改版，请用上面的 `docker-compose.local.yml` 自己构建。
+>
+> `docker-compose.local.yml` 默认把端口绑定在 `8787`。如果你前面有 nginx 等反向代理、或 8787 已被占用，请复制一份并把 `ports` 改成例如 `"127.0.0.1:8788:8787"`，再用 `-f` 指定它。
 
 ## 核心功能
 
@@ -240,7 +244,7 @@ Codex CLI 可通过自定义 OpenAI Base URL 使用 `/v1/responses`，Claude Cod
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=basketikun/claude2api&type=Date)](https://www.star-history.com/#basketikun/claude2api&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=oyxe666/Claude2api&type=Date)](https://www.star-history.com/#oyxe666/Claude2api&Date)
 
 ## 社区支持
 
