@@ -38,12 +38,12 @@ Docker Compose 本地构建部署（用本仓库的代码构建镜像）：
 git clone https://github.com/oyxe666/Claude2api.git
 cd Claude2api
 cp config.example.yaml config.yaml
-docker compose -f docker-compose.local.yml up -d --build
+docker compose up -d --build
 ```
 
-> 注意：仓库自带的 `docker-compose.yml` 拉取的是原作者发布的镜像（`ghcr.io/basketikun/claude2api`），**不包含本改版的改动**。要使用本改版，请用上面的 `docker-compose.local.yml` 自己构建。
+> 本仓库的 `docker-compose.yml` 和 `docker-compose.local.yml` 都是用本仓库代码本地构建，不会拉取原作者的镜像。
 >
-> `docker-compose.local.yml` 默认把端口绑定在 `8787`。如果你前面有 nginx 等反向代理、或 8787 已被占用，请复制一份并把 `ports` 改成例如 `"127.0.0.1:8788:8787"`，再用 `-f` 指定它。
+> 两个 compose 文件默认都把端口绑定在 `8787`。如果你前面有 nginx 等反向代理、或 8787 已被占用，请复制一份并把 `ports` 改成例如 `"127.0.0.1:8788:8787"`，再用 `-f` 指定它。
 
 ## 核心功能
 
