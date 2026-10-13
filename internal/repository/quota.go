@@ -39,24 +39,43 @@ func (q AccountQuota) IsZero() bool { return q.UpdatedAt.IsZero() && q.ErrorAt.I
 
 var quotaMu sync.Mutex
 
+// OnQuotaChanged 在额度快照成功落库后被调用（参数是账号邮箱），在 quotaMu 之外执行。
+// 由启动时注入（repository 不依赖 service）；回调里的 panic 会被吞掉。
+var OnQuotaChanged func(email string)
+
+func notifyQuotaChanged(email string) {
+	cb := OnQuotaChanged
+	if cb == nil {
+		return
+	}
+	defer func() { _ = recover() }()
+	cb(email)
+}
+
 // UpdateAccountQuota 读出当前快照 → apply 修改 → 只写 quota 列（不动其它列）。账号不存在返回 false。
 func UpdateAccountQuota(email string, apply func(*AccountQuota)) bool {
 	if email == "" || apply == nil || db == nil {
 		return false
 	}
-	quotaMu.Lock()
-	defer quotaMu.Unlock()
+	ok := func() bool {
+		quotaMu.Lock()
+		defer quotaMu.Unlock()
 
-	var a Account
-	if db.Select("quota").Where("email = ?", email).First(&a).Error != nil {
-		return false
+		var a Account
+		if db.Select("quota").Where("email = ?", email).First(&a).Error != nil {
+			return false
+		}
+		q := a.Quota
+		apply(&q)
+		b, err := json.Marshal(q)
+		if err != nil {
+			return false
+		}
+		res := db.Exec("UPDATE accounts SET quota = ? WHERE email = ?", string(b), email)
+		return res.Error == nil && res.RowsAffected > 0
+	}()
+	if ok {
+		notifyQuotaChanged(email) // 在锁外通知，回调里可以安全读写库
 	}
-	q := a.Quota
-	apply(&q)
-	b, err := json.Marshal(q)
-	if err != nil {
-		return false
-	}
-	res := db.Exec("UPDATE accounts SET quota = ? WHERE email = ?", string(b), email)
-	return res.Error == nil && res.RowsAffected > 0
+	return ok
 }

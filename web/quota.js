@@ -10,7 +10,7 @@
   const HOUR = 60 * MIN;
   const DAY = 24 * HOUR;
   const NOTE = "按账号等权平均，仅供参考";
-  const EMPTY_HINT = "暂无数据，点击刷新";
+  const EMPTY_HINT = "暂无数据，点击「检查账号」";
 
   function clamp(n, lo, hi) {
     return Math.min(hi, Math.max(lo, n));
@@ -243,7 +243,6 @@
     const nowMs = o.nowMs;
     const t = overviewText(summary, nowMs);
     const batch = o.batch || null;
-    const running = !!(batch && batch.running);
 
     const box = el(doc, "div", "quota-overview-box");
 
@@ -267,14 +266,6 @@
     const prog = el(doc, "span", "quota-progress", batch && batch.total ? `${batch.done}/${batch.total}` : "");
     prog.setAttribute("role", "status");
     act.appendChild(prog);
-    const btn = el(doc, "button", "btn btn-primary quota-all-btn", running ? "刷新中…" : "刷新全部额度");
-    btn.setAttribute("type", "button");
-    btn.setAttribute("data-act", "refresh-all-quota");
-    if (running) {
-      btn.disabled = true;
-      btn.setAttribute("aria-busy", "true");
-    }
-    act.appendChild(btn);
     foot.appendChild(act);
     box.appendChild(foot);
     return box;
@@ -325,7 +316,7 @@
     rb.setAttribute("type", "button");
     rb.setAttribute("data-act", "refresh-quota");
     rb.setAttribute("aria-label", `刷新 ${v.email} 的额度`);
-    rb.setAttribute("title", "刷新额度");
+    rb.setAttribute("title", "会向 Claude 发 1 次请求");
     if (loading) rb.setAttribute("aria-busy", "true");
     // 批次进行中，没在转圈的卡片也不允许单独刷新
     if (loading || o.locked) rb.disabled = true;
@@ -348,6 +339,7 @@
       const b = el(doc, "button", "btn-sm" + extra, text);
       b.setAttribute("type", "button");
       b.setAttribute("data-act", act);
+      if (act === "refresh-acct") b.setAttribute("title", "会向 Claude 发 1 次请求");
       acts.appendChild(b);
     }
     foot.appendChild(acts);

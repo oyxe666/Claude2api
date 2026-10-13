@@ -10,6 +10,16 @@
   --ok: #3c7d47;
   --warn: #b7791f;
   --err: #b4402f;
+  --dead: #5f5b54;
+  --dead-bg: #ece9e2;
+  --dead-bd: #bdb8ad;
+  --tired-bg: #fbf1dc;
+  --tired-bd: #e2c27a;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow-1: 0 1px 2px rgba(45, 38, 28, 0.06);
+  --shadow-2: 0 6px 18px rgba(45, 38, 28, 0.1);
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
 * {
@@ -483,9 +493,11 @@ body {
   border-color: var(--ok);
 }
 .badge.expired {
-  color: var(--warn);
-  border-color: var(--warn);
+  color: var(--dead);
+  border: 1px dashed var(--dead-bd);
+  background: var(--dead-bg);
 }
+.badge.expired::before { content: "\2020 "; }
 .badge.error {
   color: var(--err);
   border-color: var(--err);
@@ -1913,10 +1925,11 @@ body[data-page="login"] .err {
   background: var(--ok);
 }
 .pool-page .st.expired {
-  color: var(--warn);
+  color: var(--dead);
 }
 .pool-page .st.expired .dot {
-  background: var(--warn);
+  background: transparent;
+  border: 1.5px solid var(--dead);
 }
 .pool-page .st.error {
   color: var(--err);
@@ -2112,11 +2125,17 @@ body[data-page="login"] .err {
   background: #fcfbf7;
 }
 .quota-card.is-failed { border-left: 3px solid var(--q-low); }
-.quota-card.is-expired { border-style: dashed; opacity: 0.72; }
+.quota-card.is-expired {
+  border-style: dashed;
+  border-color: var(--dead-bd);
+  background: var(--dead-bg);
+  filter: grayscale(1);
+  opacity: 0.62;
+}
 .quota-card.is-exhausted {
-  background: #efede6;
-  filter: grayscale(0.6);
-  opacity: 0.78;
+  background: #fffaf0;
+  border-color: var(--tired-bd);
+  border-top: 3px solid var(--q-mid);
 }
 .quota-card-head {
   display: flex;
@@ -2150,9 +2169,9 @@ body[data-page="login"] .err {
   line-height: 18px;
   white-space: nowrap;
 }
-.quota-badge.b-exhausted { color: var(--err); border-color: var(--err); background: #f7e9e6; }
+.quota-badge.b-exhausted { color: var(--q-mid-text); border-color: var(--tired-bd); background: var(--tired-bg); }
 .quota-badge.b-failed { color: #fff; background: var(--q-low); border-color: var(--q-low); }
-.quota-badge.b-expired { color: var(--muted); }
+.quota-badge.b-expired { color: var(--dead); background: var(--dead-bg); border: 1px dashed var(--dead-bd); }
 .quota-refresh {
   display: inline-flex;
   align-items: center;
@@ -2243,4 +2262,147 @@ body[data-page="login"] .err {
   .quota-refresh.is-loading::after { content: "刷新中"; font-size: 11px; }
   .quota-fill,
   .quota-refresh { transition: none; }
+}
+
+/* 乱葬岗 */
+#grave-stats span {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  padding-left: 14px;
+  border-left: 1px solid var(--border);
+}
+#grave-stats small {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+#grave-stats b {
+  font: 600 14px/1.3 ui-monospace, monospace;
+}
+#page-graveyard .page-head {
+  align-items: center;
+  margin-bottom: 16px;
+}
+.grave-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+.grave-card {
+  padding: 14px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  background: #faf9f6;
+  font-size: 13px;
+  min-width: 0;
+}
+.grave-email {
+  margin-bottom: 6px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.grave-reason {
+  display: inline-block;
+  margin-bottom: 8px;
+  padding: 1px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.grave-line { color: var(--muted); line-height: 1.7; }
+.grave-epitaph {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-style: italic;
+}
+#page-graveyard .empty { grid-column: 1 / -1; padding: 32px 0; text-align: center; color: var(--muted); }
+@media (max-width: 720px) {
+  #grave-stats { width: 100%; justify-content: space-between; }
+  #grave-stats span { padding-left: 10px; }
+  .grave-grid { grid-template-columns: 1fr; }
+}
+/* ===== F 美化 / 状态区分 ===== */
+/* 失效(阵亡)：灰、虚线、\2020、静态；额度用完：琥珀、实线+顶部色条、\21BB、呼吸 */
+.quota-badge.b-expired::before { content: "\2020 "; }
+.quota-badge.b-exhausted::before { content: "\21BB "; display: inline-block; animation: tired-breathe 2.4s ease-in-out infinite; }
+@keyframes tired-breathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+.quota-card.is-expired .quota-fill { background: var(--dead-bd); }
+.quota-card.is-expired .quota-email { text-decoration: line-through; text-decoration-color: var(--dead-bd); }
+.quota-card.is-exhausted .quota-bar { box-shadow: inset 0 0 0 1px var(--tired-bd); }
+.pill-exhausted { color: #8a6410; }
+.pill-exhausted::before { content: "\21BB "; }
+.pool-card.is-expired { border-style: dashed; background: var(--dead-bg); }
+
+/* 统一圆角 */
+.pool-card, .quota-card, .quota-overview-box, .form-block, .grave-card, .modal { border-radius: var(--radius); }
+.btn, .btn-sm, .page-btn, .inp, .search-inp, .tab .cnt, .badge, .quota-badge, .quota-refresh, .pool-page .curtag { border-radius: var(--radius-sm); }
+.seg-btn:first-child { border-radius: 6px 0 0 6px; }
+.seg-btn:last-child { border-radius: 0 6px 6px 0; }
+.quota-bar { border-radius: 4px; }
+.quota-fill { border-radius: 4px; }
+
+/* 卡片悬浮 */
+.pool-card, .quota-card, .grave-card {
+  box-shadow: var(--shadow-1);
+  transition: transform 0.18s var(--ease), box-shadow 0.18s var(--ease), background 0.12s, border-color 0.12s;
+}
+.pool-card:hover, .quota-card:hover, .grave-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-2); }
+.quota-card.is-expired:hover { transform: none; box-shadow: var(--shadow-1); }
+
+/* 进度条 */
+.quota-fill { transition: width 0.45s var(--ease), background-color 0.3s; }
+
+/* 按钮反馈 */
+.btn, .btn-sm, .page-btn, .seg-btn, .quota-refresh {
+  transition: background 0.12s, color 0.12s, border-color 0.12s, box-shadow 0.12s, transform 0.12s;
+}
+.btn:hover:not(:disabled), .btn-sm:hover:not(:disabled) { border-color: var(--accent); }
+.btn-danger:hover:not(:disabled) { border-color: var(--err); }
+.btn:active:not(:disabled), .btn-sm:active:not(:disabled) { transform: translateY(1px); }
+.btn-primary:hover { box-shadow: var(--shadow-1); }
+
+/* 键盘焦点 */
+:where(a, button, select, summary, [tabindex]):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.inp:focus-visible, .search-inp:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.pool-card:focus-visible { outline-offset: 3px; }
+.inp:focus { box-shadow: 0 0 0 3px rgba(201, 100, 66, 0.12); }
+
+/* 乱葬岗 */
+.grave-card {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(180deg, #fbfaf7, #f3f1ea);
+  border-color: var(--dead-bd);
+  animation: grave-rise 0.35s var(--ease) both;
+}
+.grave-card::after {
+  content: "\2020";
+  position: absolute;
+  right: 12px;
+  top: 4px;
+  font-size: 44px;
+  line-height: 1;
+  color: var(--dead);
+  opacity: 0.08;
+  pointer-events: none;
+}
+@keyframes grave-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.reason-session_invalid { color: var(--dead); border-color: var(--dead-bd); background: var(--dead-bg); }
+.reason-session_invalid::before { content: "\2020 "; }
+.reason-auto_removed { color: #8a6410; border-color: var(--tired-bd); background: var(--tired-bg); }
+.reason-auto_removed::before { content: "\21BB "; }
+.reason-manual_delete { color: var(--muted); }
+.reason-manual_delete::before { content: "\2715 "; }
+#grave-stats b { font-variant-numeric: tabular-nums; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  .pool-card:hover, .quota-card:hover, .grave-card:hover, .btn:active, .btn-sm:active { transform: none !important; }
+  .msg { opacity: 1; transform: translate(-50%, 0); }
 }

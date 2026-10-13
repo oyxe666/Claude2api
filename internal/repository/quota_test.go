@@ -283,3 +283,75 @@ func TestInitDBAtAndClose(t *testing.T) {
 		t.Fatal("重新打开后数据丢失")
 	}
 }
+
+func newNotifyDB(t *testing.T) {
+t.Helper()
+conn, err := openDB(filepath.Join(t.TempDir(), "app.db"))
+if err != nil {
+t.Fatal(err)
+}
+db = conn
+t.Cleanup(func() {
+OnQuotaChanged = nil
+if sqlDB, err := conn.DB(); err == nil {
+sqlDB.Close()
+}
+})
+if err := UpsertAccount(&Account{Email: "n@example.com", Cookies: map[string]string{"sessionKey": "sk-test-fake"}, Status: "active"}); err != nil {
+t.Fatal(err)
+}
+}
+
+func TestOnQuotaChangedCalledOnSuccessOnly(t *testing.T) {
+newNotifyDB(t)
+var got []string
+OnQuotaChanged = func(email string) { got = append(got, email) }
+if !UpdateAccountQuota("n@example.com", func(q *AccountQuota) { q.Type = "within_limit" }) {
+t.Fatal("应返回 true")
+}
+if len(got) != 1 || got[0] != "n@example.com" {
+t.Fatalf("回调 = %v", got)
+}
+if UpdateAccountQuota("nobody@example.com", func(q *AccountQuota) { q.Type = "x" }) {
+t.Fatal("不存在的邮箱应返回 false")
+}
+if len(got) != 1 {
+t.Fatalf("账号不存在不应触发回调: %v", got)
+}
+}
+
+func TestOnQuotaChangedPanicIsSwallowed(t *testing.T) {
+newNotifyDB(t)
+OnQuotaChanged = func(string) { panic("boom") }
+if !UpdateAccountQuota("n@example.com", func(q *AccountQuota) { q.Type = "within_limit" }) {
+t.Fatal("回调 panic 不应影响返回值")
+}
+}
+
+func TestOnQuotaChangedRunsOutsideLock(t *testing.T) {
+newNotifyDB(t)
+done := make(chan struct{})
+OnQuotaChanged = func(email string) {
+// 回调里再读库、再写额度（需要 quotaMu）都不能死锁。
+OnQuotaChanged = nil
+_ = AccountByEmail(email)
+nested := UpdateAccountQuota(email, func(q *AccountQuota) { q.Type = "exceeded_limit" })
+if !nested {
+panic("回调内写额度失败")
+}
+close(done)
+}
+finished := make(chan bool, 1)
+go func() {
+finished <- UpdateAccountQuota("n@example.com", func(q *AccountQuota) { q.Type = "within_limit" })
+}()
+select {
+case ok := <-finished:
+if !ok {
+t.Fatal("更新应成功")
+}
+case <-time.After(3 * time.Second):
+t.Fatal("死锁：回调似乎在 quotaMu 持有期间执行")
+}
+<-done
+}

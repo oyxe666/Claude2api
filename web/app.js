@@ -36,6 +36,12 @@ let searchKw = "";
 let curPage = 1;
 let pageSize = 10;
 
+// 每页条数记在 localStorage；读取值必须在下拉选项内，否则用默认 10。
+const ACC_PAGESIZE_KEY = "claude2api_acc_pagesize";
+const LOGS_PAGESIZE_KEY = "claude2api_logs_pagesize";
+pageSize = PrefsUI.loadPageSize(PrefsUI.safeStorage(window), ACC_PAGESIZE_KEY, PrefsUI.optionValues($("#page-size")), 10);
+$("#page-size").value = String(pageSize);
+
 // 账号页视图（卡片 / 表格）与额度刷新状态
 const VIEW_KEY = "claude2api_acc_view";
 let quotaView = localStorage.getItem(VIEW_KEY) === "table" ? "table" : "cards";
@@ -50,6 +56,7 @@ const CONFIG_FIELDS = [
   "detailed_api_log",
   "status_check_interval_seconds",
   "remove_invalid_account",
+  "quota_balance_gap",
 ];
 
 const CONFIG_DEFAULTS = {
@@ -59,10 +66,12 @@ const CONFIG_DEFAULTS = {
   detailed_api_log: false,
   status_check_interval_seconds: 21600,
   remove_invalid_account: false,
+  quota_balance_gap: 0.3,
 };
 
-async function api(path, method = "GET", body = null, stream = false) {
+async function api(path, method = "GET", body = null, stream = false, signal = null) {
   const opt = { method, headers: {} };
+  if (signal) opt.signal = signal;
   if (authToken) opt.headers.Authorization = "Bearer " + authToken;
   if (body) {
     opt.headers["Content-Type"] = "application/json";
@@ -217,7 +226,7 @@ function quotaLine(label, w) {
   const txt = over ? "已耗尽" : `剩余 ${Math.round(s.remaining)}%`;
   const reset = s.resetsAtMs ? QuotaUI.fmtLocalTime(s.resetsAtMs) : "";
   return (
-    `<div class="quota-line"><b>${label}</b> <span class="${over ? "pill pill-err" : ""}">${esc(txt)}</span>` +
+    `<div class="quota-line"><b>${label}</b> <span class="${over ? "pill pill-exhausted" : ""}">${esc(txt)}</span>` +
     (reset ? ` <span class="quota-reset">重置 ${esc(reset)}</span>` : "") +
     `</div>`
   );
@@ -288,7 +297,7 @@ function renderTableView() {
       <td class="mono">${esc(fmtTime(a.updated_at) || "—")}</td>
       <td class="mono">${esc(quotaUpdatedText(a.quota))}</td>
       <td>
-        <button class="btn-sm act-refresh">刷新</button>
+        <button class="btn-sm act-refresh" title="会向 Claude 发 1 次请求">刷新</button>
         <button class="btn-sm act-detail">详情</button>
         <button class="btn-sm btn-danger act-del">删除</button>
       </td>
@@ -404,6 +413,7 @@ function rerender() {
   renderStats();
   renderTable();
   renderOverview();
+  updateCheckTitle();
 }
 
 async function loadAccounts() {
@@ -512,29 +522,83 @@ async function refreshAccount(email, button) {
   }
 }
 
-async function refreshAllAccounts() {
-  const btn = $("#btn-refresh-all"), count = ACCOUNTS.length;
-  if (!count) return showMsg("当前没有可刷新的账号", "ok");
-  if (quotaBatch.running) return showMsg("额度正在刷新中，请稍候", "ok");
+// 检查账号：只调后端 SSE 接口，由服务端逐个排队（账号间随机间隔 3~8 秒）；点“停止”即断开，剩余账号不再请求。
+const CHECK_GAP_MIN_SEC = 3, CHECK_GAP_MAX_SEC = 8;
+let checkAbort = null;
+function checkTargets() {
+  return ACCOUNTS.filter((a) => a.has_session !== false && a.status !== "expired").map((a) => a.email);
+}
+function updateCheckTitle() {
+  const n = checkTargets().length;
+  const mins = LiveUI.estimateMinutes(n, CHECK_GAP_MIN_SEC, CHECK_GAP_MAX_SEC);
+  $("#btn-check-all").title =
+    `会逐个向 Claude 发请求（每个账号间隔 ${CHECK_GAP_MIN_SEC}~${CHECK_GAP_MAX_SEC} 秒），约需 ${mins} 分钟，可随时点停止`;
+}
+async function checkAllAccounts() {
+  if (quotaBatch.running) return showMsg("正在检查中，请稍候", "ok");
+  const targets = checkTargets();
+  if (!targets.length) return showMsg("没有可检查的账号", "ok");
+  const btn = $("#btn-check-all"), stop = $("#btn-check-stop");
+  quotaBatch = { running: true, done: 0, total: targets.length };
+  quotaRefreshing.clear();
+  targets.forEach((email) => quotaRefreshing.add(email));
+  checkAbort = new AbortController();
   btn.disabled = true;
-  btn.textContent = "刷新中…";
-  let completed = 0;
-  setProgress("#refresh-all-progress", 0, count);
+  btn.textContent = "检查中…";
+  stop.disabled = false;
+  setProgress("#refresh-all-progress", 0, targets.length);
+  renderQuota();
+  let summary = null;
   try {
-    const results = await Promise.allSettled(ACCOUNTS.map(async (a) => {
-      try { return await api("/api/accounts/refresh", "POST", { email: a.email }); }
-      finally { setProgress("#refresh-all-progress", ++completed, count); }
-    }));
-    const failed = results.filter((r) => r.status === "rejected").length;
-    setProgress("#refresh-all-progress", count, count, failed ? `完成，失败 ${failed}` : "刷新完成");
-    await loadAccounts();
-    showMsg(failed ? `刷新完成：成功 ${count - failed}，失败 ${failed}` : `已刷新 ${count} 个账号`, failed ? "err" : "ok");
-    await refreshAllQuotas();
+    const r = await api("/api/accounts/check-all", "POST", {}, true, checkAbort.signal);
+    const reader = r.body.getReader(), decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+      const parsed = LiveUI.parseSSE(buffer);
+      buffer = parsed.rest;
+      for (const ev of parsed.events) {
+        let d;
+        try { d = JSON.parse(ev.data); } catch { continue; }
+        if (ev.event === "start") {
+          quotaBatch.total = d.total || quotaBatch.total;
+          const mins = LiveUI.estimateMinutes(quotaBatch.total, d.gap_min_sec ?? CHECK_GAP_MIN_SEC, d.gap_max_sec ?? CHECK_GAP_MAX_SEC);
+          setProgress("#refresh-all-progress", 0, quotaBatch.total, `0/${quotaBatch.total} · 约需 ${mins} 分钟`);
+        } else if (ev.event === "progress") {
+          quotaBatch.done = d.completed ?? quotaBatch.done + 1;
+          quotaBatch.total = d.total || quotaBatch.total;
+          quotaRefreshing.delete(d.email);
+          mergeAccount(d.account);
+          rerender();
+          setProgress("#refresh-all-progress", quotaBatch.done, quotaBatch.total, `${quotaBatch.done}/${quotaBatch.total} · ${d.email}`);
+        } else if (ev.event === "done") {
+          summary = d;
+        }
+      }
+      if (done) break;
+    }
+    if (summary) {
+      const extra = summary.skipped ? `，跳过 ${summary.skipped}` : "";
+      setProgress("#refresh-all-progress", quotaBatch.total, quotaBatch.total, `检查完成：成功 ${summary.ok}，失败 ${summary.failed}${extra}`);
+      showMsg(`检查完成：成功 ${summary.ok}，失败 ${summary.failed}${extra}`, summary.failed || summary.skipped ? "err" : "ok");
+    }
   } catch (e) {
-    showMsg("一键刷新失败: " + e.message, "err");
+    if (e && e.name === "AbortError") {
+      setProgress("#refresh-all-progress", quotaBatch.done, quotaBatch.total, `已停止，已检查 ${quotaBatch.done}/${quotaBatch.total}`);
+      showMsg(`已停止，已检查 ${quotaBatch.done}/${quotaBatch.total}`, "ok");
+    } else {
+      showMsg("检查账号失败: " + e.message, "err");
+    }
   } finally {
+    checkAbort = null;
+    quotaBatch.running = false;
+    quotaRefreshing.clear();
     btn.disabled = false;
-    btn.textContent = "一键刷新";
+    btn.textContent = "检查账号";
+    stop.disabled = true;
+    renderQuota();
+    loadAccounts();
   }
 }
 
@@ -557,57 +621,32 @@ async function refreshQuotaOne(email) {
   }
 }
 
-async function refreshAllQuotas() {
-  if (quotaBatch.running) return showMsg("额度正在刷新中，请稍候", "ok");
-  const targets = ACCOUNTS.filter((a) => a.has_session !== false && a.status !== "expired").map((a) => a.email);
-  if (!targets.length) return showMsg("没有可刷新额度的账号", "ok");
-  quotaBatch = { running: true, done: 0, total: targets.length };
-  quotaRefreshing.clear();
-  targets.forEach((email) => quotaRefreshing.add(email));
-  renderQuota();
-  let summary = null;
-  try {
-    const r = await api("/api/accounts/quota/refresh-all", "POST", {}, true);
-    const reader = r.body.getReader(), decoder = new TextDecoder();
-    let buffer = "";
-    while (true) {
-      const { value, done } = await reader.read();
-      buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
-      const events = buffer.split("\n\n");
-      buffer = events.pop();
-      for (const event of events) {
-        const line = event.split("\n").find((l) => l.startsWith("data:"));
-        if (!line) continue;
-        const d = JSON.parse(line.slice(5));
-        if (d.done) {
-          summary = d;
-          continue;
-        }
-        quotaBatch.done = d.completed ?? quotaBatch.done + 1;
-        quotaBatch.total = d.total || quotaBatch.total;
-        quotaRefreshing.delete(d.email);
-        mergeAccount(d.account);
-        rerender();
-      }
-      if (done) break;
-    }
-    await loadAccounts();
-    if (summary) {
-      const extra = summary.skipped ? `，跳过 ${summary.skipped}` : "";
-      showMsg(
-        `额度刷新完成：成功 ${summary.ok}，失败 ${summary.failed}${extra}`,
-        summary.failed || summary.skipped ? "err" : "ok",
-      );
-    }
-  } catch (e) {
-    showMsg("刷新额度失败: " + e.message, "err");
-  } finally {
-    quotaBatch.running = false;
-    quotaRefreshing.clear();
-    renderQuota();
-  }
+// 额度实时推送：订阅服务端 /api/events（只读本地库的变化，不会向 Claude 发请求）。
+let liveSource = null, liveAttempt = 0, liveTimer = null;
+function startLive() {
+  if (liveSource || currentRole !== "admin" || typeof EventSource === "undefined") return;
+  if (liveTimer) { clearTimeout(liveTimer); liveTimer = null; }
+  const es = new EventSource("/api/events");
+  liveSource = es;
+  es.onopen = () => { liveAttempt = 0; };
+  es.addEventListener("quota", (e) => {
+    let d;
+    try { d = JSON.parse(e.data); } catch { return; }
+    if (!LiveUI.mergeEventAccount(ACCOUNTS, d && d.account)) return;
+    if (!document.hidden && !$("#page-accounts").classList.contains("hidden")) rerender();
+  });
+  es.onerror = () => {
+    es.close();
+    if (liveSource === es) liveSource = null;
+    if (document.hidden) return; // 回到前台时统一重连
+    if (liveTimer) clearTimeout(liveTimer);
+    liveTimer = setTimeout(startLive, LiveUI.reconnectDelay(liveAttempt++));
+  };
 }
-
+function stopLive() {
+  if (liveTimer) { clearTimeout(liveTimer); liveTimer = null; }
+  if (liveSource) { liveSource.close(); liveSource = null; }
+}
 async function deleteOne(email) {
   const ok = await confirmDialog(`确认删除账号 ${email} ？`, {
     title: "删除账号",
@@ -903,6 +942,52 @@ function switchPage(name) {
   if (name === "system") loadConfig();
   if (name === "keys") loadKeys();
   if (name === "logs") loadLogs();
+  if (name === "graveyard") loadGraveyard();
+}
+
+// ---------- 乱葬岗 ----------
+let gravePage = 1;
+const gravePageSize = 12;
+let graveTotal = 0;
+
+function renderGravePager() {
+  const pager = $("#grave-pager");
+  const totalPages = Math.max(1, Math.ceil(graveTotal / gravePageSize));
+  if (totalPages <= 1) {
+    pager.innerHTML = `<span class="pager-info">共 ${graveTotal} 个</span>`;
+    return;
+  }
+  const btn = (label, page, disabled, active) =>
+    `<button class="page-btn${active ? " active" : ""}" data-gpage="${page}"${disabled ? " disabled" : ""}>${label}</button>`;
+  let html = btn("上一页", gravePage - 1, gravePage === 1, false);
+  html += `<span class="pager-info">${gravePage}/${totalPages} 页</span>`;
+  html += btn("下一页", gravePage + 1, gravePage === totalPages, false);
+  html += `<span class="pager-info">共 ${graveTotal} 个</span>`;
+  pager.innerHTML = html;
+}
+
+async function loadGraveyard() {
+  try {
+    const [list, stats] = await Promise.all([
+      api(`/api/graveyard?limit=${gravePageSize}&offset=${(gravePage - 1) * gravePageSize}`),
+      api("/api/graveyard/stats"),
+    ]);
+    graveTotal = list.total || 0;
+    const statsEl = $("#grave-stats");
+    statsEl.textContent = "";
+    GraveUI.buildStats(document, stats).forEach((s) => statsEl.appendChild(s));
+    const box = $("#grave-list");
+    box.textContent = "";
+    const graves = list.graves || [];
+    if (!graves.length) {
+      box.appendChild(GraveUI.buildEmpty(document));
+    } else {
+      graves.forEach((g) => box.appendChild(GraveUI.buildTomb(document, g, { fmtTime })));
+    }
+    renderGravePager();
+  } catch (e) {
+    showMsg("加载乱葬岗失败: " + e.message, "err");
+  }
 }
 
 async function loadKeys() {
@@ -966,6 +1051,8 @@ async function deleteKey(id) {
 
 let logsPage = 1;
 let logsPageSize = 10;
+logsPageSize = PrefsUI.loadPageSize(PrefsUI.safeStorage(window), LOGS_PAGESIZE_KEY, PrefsUI.optionValues($("#logs-page-size")), 10);
+$("#logs-page-size").value = String(logsPageSize);
 let logsTotal = 0;
 const fmtSeconds = (ms) => ms ? `${(ms / 1000).toFixed(2)} s` : "—";
 
@@ -1175,7 +1262,8 @@ $("#account-models").addEventListener("click", (e) => {
 });
 
 $("#btn-refresh").addEventListener("click", refreshAccountsPage);
-$("#btn-refresh-all").addEventListener("click", refreshAllAccounts);
+$("#btn-check-all").addEventListener("click", checkAllAccounts);
+$("#btn-check-stop").addEventListener("click", () => checkAbort && checkAbort.abort());
 $("#btn-import").addEventListener("click", () => {
   $("#import-progress").classList.add("hidden");
   $("#import-mask").classList.remove("hidden");
@@ -1231,6 +1319,19 @@ $("#btn-logs-refresh").addEventListener("click", () => {
   loadLogs();
 });
 $("#btn-logs-delete").addEventListener("click", deleteSelectedLogs);
+$("#btn-grave-refresh").addEventListener("click", () => {
+  gravePage = 1;
+  loadGraveyard();
+});
+$("#grave-pager").addEventListener("click", (e) => {
+  const btn = e.target.closest(".page-btn");
+  if (!btn || btn.disabled) return;
+  const p = Number(btn.dataset.gpage);
+  if (p && p !== gravePage) {
+    gravePage = p;
+    loadGraveyard();
+  }
+});
 $("#btn-logs-trim").addEventListener("click", trimLogs);
 $("#logs-check-all").addEventListener("change", (e) => {
   document.querySelectorAll(".log-check").forEach((el) => (el.checked = e.target.checked));
@@ -1238,6 +1339,7 @@ $("#logs-check-all").addEventListener("change", (e) => {
 });
 $("#logs-page-size").addEventListener("change", (e) => {
   logsPageSize = Number(e.target.value) || 10;
+  PrefsUI.savePageSize(PrefsUI.safeStorage(window), LOGS_PAGESIZE_KEY, logsPageSize);
   logsPage = 1;
   loadLogs();
 });
@@ -1310,6 +1412,7 @@ $("#search").addEventListener("input", (e) => {
 
 $("#page-size").addEventListener("change", (e) => {
   pageSize = parseInt(e.target.value, 10) || 20;
+  PrefsUI.savePageSize(PrefsUI.safeStorage(window), ACC_PAGESIZE_KEY, pageSize);
   curPage = 1;
   renderTable();
 });
@@ -1335,10 +1438,6 @@ $("#acc-body").addEventListener("click", (e) => {
 });
 
 // 额度总览 / 卡片 / 视图切换
-$("#quota-overview").addEventListener("click", (e) => {
-  const b = e.target.closest("button[data-act]");
-  if (b && !b.disabled && b.dataset.act === "refresh-all-quota") refreshAllQuotas();
-});
 $("#quota-grid").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-act]");
   if (!b || b.disabled) return;
@@ -1374,6 +1473,13 @@ if (currentRole !== "admin") {
 } else {
   refreshAccountsPage();
   loadConfig();
+  startLive();
+  // 切走标签页时断开推送省连接；回到前台重读一次本地列表（不向 Claude 发请求）并重连。
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) return stopLive();
+    loadAccounts();
+    startLive();
+  });
 }
 switchPage(initialPage);
 }
@@ -1452,7 +1558,7 @@ function initPool(poolRoot) {
         const st = a.status || "unknown";
         const isCur = a.email === current;
         const no = start + i + 1;
-        return `<div class="pool-card${isCur ? " current" : ""}" data-email="${esc(a.email)}">
+        return `<div class="pool-card${isCur ? " current" : ""}${st === "expired" ? " is-expired" : ""}" data-email="${esc(a.email)}" tabindex="0" role="button">
           <div class="pool-card-head">
             <span class="card-logo"><img src="/static/claude.svg" alt="Claude"></span>
             <div class="acc-no">账号 #${no}${isCur ? ` <span class="curtag">当前</span>` : ""}</div>
@@ -1579,12 +1685,19 @@ function initPool(poolRoot) {
     if (e.key === "Enter") submitKey();
   });
 
-  listEl.addEventListener("click", (e) => {
+  const activateCard = (e) => {
     const card = e.target.closest(".pool-card");
     if (!card) return;
     const email = card.dataset.email;
     if (email === current) window.location.href = "/new";
     else selectAccount(email);
+  };
+  listEl.addEventListener("click", activateCard);
+  listEl.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    if (e.target.closest(".pool-card") !== e.target) return;
+    e.preventDefault();
+    activateCard(e);
   });
 
   pagerEl.addEventListener("click", (e) => {

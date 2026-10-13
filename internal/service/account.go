@@ -93,11 +93,12 @@ func RefreshAccount(email string) (*repository.Account, bool) {
 	if err != nil || info == nil || info.Email == "" {
 		if err != nil && strings.Contains(err.Error(), "account_session_invalid") {
 			if config.Get().RemoveInvalidAccount {
+				repository.RecordGrave(account.Email, repository.GraveAutoRemoved)
 				repository.DeleteAccount(account.Email)
 				slog.Warn("[账号刷新] 会话失效，已移除账号", "email", account.Email)
 				return nil, true
 			}
-			repository.UpdateAccount(account.Email, func(a *repository.Account) { a.Status = "expired" })
+			repository.MarkAccountExpired(account.Email)
 			return repository.AccountByEmail(account.Email), false
 		}
 		repository.UpdateAccount(account.Email, func(a *repository.Account) { a.Status = "error" })

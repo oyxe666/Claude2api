@@ -143,12 +143,15 @@ func AdminDeleteAccount(c *gin.Context) {
 		Email string `json:"email"`
 	}
 	_ = c.ShouldBindJSON(&body)
+	// 先记墓碑再删；账号不存在或已有墓碑时不会重复记。
+	repository.RecordGrave(body.Email, repository.GraveManualDelete)
 	removed := repository.DeleteAccount(body.Email)
 	slog.Info("[删除] 账号已删除", "email", body.Email, "removed", removed)
 	c.JSON(http.StatusOK, gin.H{"removed": removed})
 }
 
 func AdminDeleteExpired(c *gin.Context) {
+	// DeleteAccountsByStatus 内部会先记墓碑（已记过的自动去重）。
 	emails := repository.DeleteAccountsByStatus([]string{"expired"})
 	slog.Info("[删除] 一键删除失效账号", "count", len(emails))
 	c.JSON(http.StatusOK, gin.H{"removed": len(emails), "emails": emails})

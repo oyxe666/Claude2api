@@ -161,7 +161,7 @@ func proxyModifyResponse(resp *http.Response) error {
 			// /login 重定向短窗口内二次确认后才标失效。
 			if pc.onMain && isLoginRedirect(v) {
 				if confirmLoginExpired(pc.email) {
-					repository.UpdateAccount(pc.email, func(a *repository.Account) { a.Status = "expired" })
+					repository.MarkAccountExpired(pc.email)
 					slog.Warn("[号池] 账号会话失效（二次确认），已踢回选择页", "email", pc.email)
 				} else {
 					slog.Info("[号池] 账号疑似会话失效（首次 /login 重定向），暂不标记", "email", pc.email)

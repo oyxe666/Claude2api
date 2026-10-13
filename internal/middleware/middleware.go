@@ -25,6 +25,11 @@ func AdminAuth() gin.HandlerFunc {
 			c.Next()
 			return
 		}
+		// 浏览器 EventSource 不能设请求头，所以仅 GET /api/events 允许用登录 cookie 鉴权。
+		if c.Request.Method == http.MethodGet && p == "/api/events" && AdminCredentialValid(RequestCredential(c.Request)) {
+			c.Next()
+			return
+		}
 		if !strings.Contains(p, "/api/") {
 			c.Redirect(http.StatusFound, "/")
 			c.Abort()

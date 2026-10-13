@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -25,6 +26,8 @@ type Settings struct {
 	MaxChatHistoryLength       int    `json:"max_chat_history_length" yaml:"max_history_length"`
 	RemoveInvalidAccount       bool   `json:"remove_invalid_account" yaml:"remove_invalid_account"`
 	DetailedAPILog             bool   `json:"detailed_api_log" yaml:"detailed_api_log"`
+	// QuotaBalanceGap 额度均衡阈值（0~1）：5 小时剩余比最大者低超过该值的账号本轮不分配；0 关闭。
+	QuotaBalanceGap float64 `json:"quota_balance_gap" yaml:"quota_balance_gap"`
 }
 
 var (
@@ -53,7 +56,7 @@ func Load() {
 	}
 	configPath = filepath.Join(baseDir, "config.yaml")
 	ensureConfig(configPath)
-	current = Settings{WebHost: "127.0.0.1", WebPort: 8787, WebUCHost: "localhost", StatusCheckIntervalSeconds: 21600, ChatDelete: true, MaxChatHistoryLength: 12000}
+	current = Settings{WebHost: "127.0.0.1", WebPort: 8787, WebUCHost: "localhost", StatusCheckIntervalSeconds: 21600, ChatDelete: true, MaxChatHistoryLength: 12000, QuotaBalanceGap: 0.30}
 	data, _ := os.ReadFile(configPath)
 	_ = yaml.Unmarshal(data, &current)
 	current.Proxy = strings.TrimSpace(current.Proxy)
@@ -72,6 +75,27 @@ func Load() {
 	if current.MaxChatHistoryLength <= 0 {
 		current.MaxChatHistoryLength = 12000
 	}
+	current.QuotaBalanceGap = clampGap(current.QuotaBalanceGap)
+}
+
+// clampGap 把均衡阈值夹到 [0,1]；NaN 视为 0（关闭）。
+func clampGap(g float64) float64 {
+	if math.IsNaN(g) || g < 0 {
+		return 0
+	}
+	if g > 1 {
+		return 1
+	}
+	return g
+}
+
+// parseGap 解析阈值；无法解析或为 NaN/Inf 时返回 false（调用方保持原值）。
+func parseGap(v any) (float64, bool) {
+	f, err := strconv.ParseFloat(strings.TrimSpace(fmt.Sprint(v)), 64)
+	if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
+		return 0, false
+	}
+	return clampGap(f), true
 }
 
 func Get() Settings {
@@ -134,6 +158,11 @@ func Update(patch map[string]any) Settings {
 			current.RemoveInvalidAccount = mustBool(v)
 		case "detailed_api_log":
 			current.DetailedAPILog = mustBool(v)
+		case "quota_balance_gap":
+			// 空值/非法值保持原值，避免误清空把均衡悄悄关掉；要关闭请明确填 0。
+			if g, ok := parseGap(v); ok {
+				current.QuotaBalanceGap = g
+			}
 		}
 	}
 	writeConfig()

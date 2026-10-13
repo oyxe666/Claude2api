@@ -315,7 +315,7 @@ test("summarize: 只有一个窗口有数据时另一窗口平均为 null", () =
 // ---- overviewText ----
 test("overviewText 文案", () => {
   const none = Q.overviewText(Q.summarize([{ email: "a", status: "active" }], NOW), NOW);
-  assert.strictEqual(none.empty, "暂无数据，点击刷新");
+  assert.strictEqual(none.empty, "暂无数据，点击「检查账号」");
   assert.strictEqual(none.available, "1/1");
   assert.strictEqual(none.avg5, "—");
   assert.strictEqual(none.recovery, "—");
@@ -443,6 +443,13 @@ test("buildCard: 刷新按钮 aria-label / loading / 无时间显示暂无", () 
   const acts = find(busy, (n) => n.tag === "button").map((b) => b.getAttribute("data-act"));
   assert.deepStrictEqual(acts, ["refresh-quota", "refresh-acct", "detail", "delete"]);
 });
+test("buildCard: 单账号刷新按钮 title 写明会向 Claude 发 1 次请求", () => {
+  const card = Q.buildCard(makeDoc(), { email: "a@x", status: "active" }, NOW, {});
+  for (const act of ["refresh-quota", "refresh-acct"]) {
+    const b = find(card, (n) => n.getAttribute("data-act") === act)[0];
+    assert.strictEqual(b.getAttribute("title"), "会向 Claude 发 1 次请求", act);
+  }
+});
 test("buildOverview: 有数据", () => {
   const doc = makeDoc();
   const s = Q.summarize(
@@ -451,25 +458,22 @@ test("buildOverview: 有数据", () => {
   );
   const box = Q.buildOverview(doc, s, { nowMs: NOW });
   const t = allText(box);
-  for (const k of ["可用账号", "1/2", "5 小时剩余", "40%", "7 天剩余", "65%", "最近恢复", "2 小时 10 分后恢复 1 个号", "按账号等权平均，仅供参考", "刷新全部额度"]) {
+  for (const k of ["可用账号", "1/2", "5 小时剩余", "40%", "7 天剩余", "65%", "最近恢复", "2 小时 10 分后恢复 1 个号", "按账号等权平均，仅供参考"]) {
     assert.ok(t.includes(k), "缺少: " + k);
   }
   const bars = find(box, (n) => n.getAttribute("role") === "progressbar");
   assert.strictEqual(bars.length, 2);
   assert.strictEqual(bars[0].getAttribute("aria-valuenow"), "40");
-  const btn = find(box, (n) => n.getAttribute("data-act") === "refresh-all-quota")[0];
-  assert.strictEqual(btn.disabled, false);
+  assert.ok(!t.includes("刷新全部额度"));
+  assert.strictEqual(find(box, (n) => n.getAttribute("data-act") === "refresh-all-quota").length, 0);
 });
-test("buildOverview: 无数据显示提示；批次中禁用并显示 n/N", () => {
+test("buildOverview: 无数据显示提示；批次中显示 n/N（不再有总览刷新按钮）", () => {
   const s = Q.summarize([{ email: "a", status: "active" }], NOW);
   const idle = Q.buildOverview(makeDoc(), s, { nowMs: NOW });
-  assert.ok(allText(idle).includes("暂无数据，点击刷新"));
+  assert.ok(allText(idle).includes("暂无数据，点击「检查账号」"));
   assert.ok(!allText(idle).includes("按账号等权平均"));
   const run = Q.buildOverview(makeDoc(), s, { nowMs: NOW, batch: { running: true, done: 2, total: 5 } });
-  const btn = find(run, (n) => n.getAttribute("data-act") === "refresh-all-quota")[0];
-  assert.strictEqual(btn.disabled, true);
-  assert.strictEqual(btn.getAttribute("aria-busy"), "true");
-  assert.strictEqual(btn.textContent, "刷新中…");
+  assert.strictEqual(find(run, (n) => n.tag === "button").length, 0);
   assert.ok(find(run, (n) => hasCls(n, "quota-progress"))[0].textContent === "2/5");
 });
 

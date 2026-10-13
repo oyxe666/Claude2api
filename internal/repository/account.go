@@ -74,6 +74,8 @@ func DeleteAccountsByStatus(statuses []string) []string {
 	for _, a := range LoadAccounts() {
 		for _, s := range statuses {
 			if a.Status == s {
+				// 先记墓碑再删（已经记过的号自动去重，保留最早那条）。
+				RecordGrave(a.Email, GraveManualDelete)
 				if db.Where("email = ?", a.Email).Delete(&Account{}).Error == nil {
 					removed = append(removed, a.Email)
 				}

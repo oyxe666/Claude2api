@@ -80,7 +80,66 @@ func skipExhausted(usable []repository.Account, now time.Time) []repository.Acco
 	return ok
 }
 
-// pickAPIAccount 轮询可用账号（跳过额度已耗尽的账号）。
+// balanceFreshWindow 是额度快照被视为「新鲜」的最长时长，超过则该账号按未知处理。
+const balanceFreshWindow = 10 * time.Minute
+
+// fiveHourRemain 返回账号 5 小时窗口的剩余比例（0~1）。
+// 快照缺失、过期（>= balanceFreshWindow）或没有用量数据时 known=false。
+// 新鲜快照里 ResetsAt 已过，说明窗口已重置，剩余按 100% 算。
+func fiveHourRemain(a *repository.Account, now time.Time) (remain float64, known bool) {
+	q := a.Quota
+	if q.UpdatedAt.IsZero() || now.Sub(q.UpdatedAt) >= balanceFreshWindow {
+		return 0, false
+	}
+	if q.FiveHour == nil || q.FiveHour.Utilization == nil {
+		return 0, false
+	}
+	if q.FiveHour.ResetsAt > 0 && now.Unix() >= q.FiveHour.ResetsAt {
+		return 1, true
+	}
+	r := 1 - *q.FiveHour.Utilization
+	if r < 0 {
+		r = 0
+	}
+	if r > 1 {
+		r = 1
+	}
+	return r, true
+}
+
+// balanceByFiveHour 让 5 小时剩余比例明显偏低的账号本轮暂不分配，使各号额度消耗更均衡。
+// 只在「剩余比最大者」与某账号的差距超过 gap 时才跳过（恰好等于 gap 不跳过）。
+// 未知快照（缺失/过期/无用量）既不跳过也不参与求最大值：快照只在对话/检查后更新，阈值宁宽勿严。
+// gap <= 0 关闭；过滤后为空则原样返回（理论上不会发生，最大者必留）。保持原顺序。
+func balanceByFiveHour(usable []repository.Account, now time.Time, gap float64) []repository.Account {
+	if gap <= 0 || len(usable) == 0 {
+		return usable
+	}
+	remains := make([]float64, len(usable))
+	knowns := make([]bool, len(usable))
+	maxRemain, have := 0.0, false
+	for i := range usable {
+		remains[i], knowns[i] = fiveHourRemain(&usable[i], now)
+		if knowns[i] && (!have || remains[i] > maxRemain) {
+			maxRemain, have = remains[i], true
+		}
+	}
+	if !have {
+		return usable
+	}
+	ok := make([]repository.Account, 0, len(usable))
+	for i := range usable {
+		if !knowns[i] || maxRemain-remains[i] <= gap+1e-9 {
+			ok = append(ok, usable[i])
+		}
+	}
+	if len(ok) == 0 {
+		return usable
+	}
+	return ok
+}
+
+// pickAPIAccount 轮询可用账号（跳过额度已耗尽的账号，并按 5 小时剩余做均衡）。
 func pickAPIAccount() *repository.Account {
 	accounts := repository.LoadAccounts()
 	usable := make([]repository.Account, 0, len(accounts))
@@ -102,10 +161,23 @@ func pickAPIAccount() *repository.Account {
 		return nil
 	}
 	usable = skipExhausted(usable, time.Now())
+	usable = balanceByFiveHour(usable, time.Now(), config.Get().QuotaBalanceGap)
 	acct := usable[apiIndex%len(usable)]
 	apiIndex++
 	apiIndexLock.Unlock()
 	return &acct
+}
+
+// dropInvalidSession：建会话报 account_session_invalid 且开启自动移除时，先入乱葬岗再删号。
+// 返回是否删除了账号。
+func dropInvalidSession(email string, err error, remove bool) bool {
+	if !remove || err == nil || !strings.Contains(err.Error(), "account_session_invalid") {
+		return false
+	}
+	repository.RecordGrave(email, repository.GraveAutoRemoved)
+	repository.DeleteAccount(email)
+	slog.Warn("[API] 会话失效，已立即移除账号", "email", email)
+	return true
 }
 
 // delConvSem 限制后台删会话并发。
@@ -192,10 +264,7 @@ func (Dispatcher) Complete(reqModel string, prompt Prompt, onText func(string)) 
 		convID, err := client.CreateConversation(model, think)
 		if err != nil {
 			lastErr = err
-			if s.RemoveInvalidAccount && strings.Contains(err.Error(), "account_session_invalid") {
-				repository.DeleteAccount(email)
-				slog.Warn("[API] 会话失效，已立即移除账号", "email", email)
-			}
+			dropInvalidSession(email, err, s.RemoveInvalidAccount)
 			slog.Warn("[API] 建会话失败，换号重试", "email", email, "err", err)
 			lease.Unlock()
 			continue

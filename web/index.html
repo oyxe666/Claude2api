@@ -50,6 +50,7 @@
           <button class="nav-item" data-page="api">API 文档</button>
           <button class="nav-item" data-page="chat">对话测试</button>
           <button class="nav-item" data-page="logs">调用日志</button>
+          <button class="nav-item" data-page="graveyard">乱葬岗</button>
           <button class="nav-item" data-page="system">系统管理</button>
         </nav>
         <div class="nav-foot">
@@ -68,7 +69,7 @@
                 </h1>
               </div>
               <div class="pool-top-actions">
-                <button id="btn-pool-refresh" class="btn">
+                <button id="btn-pool-refresh" class="btn" title="只读本地数据，不会向 Claude 发请求">
                   <svg
                     viewBox="0 0 24 24"
                     fill="none"
@@ -77,7 +78,7 @@
                   >
                     <path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6" />
                   </svg>
-                  刷新
+                  刷新（本地）
                 </button>
                 <button id="btn-pool-random" class="btn">
                   <svg
@@ -108,8 +109,8 @@
           <div id="quota-overview" class="quota-overview"></div>
 
           <div class="toolbar">
-            <button id="btn-refresh" class="btn">刷新</button>
-            <button id="btn-refresh-all" class="btn">一键刷新</button>
+            <button id="btn-refresh" class="btn" title="只重新读取本地数据，不会向 Claude 发任何请求" aria-label="刷新列表：只重新读取本地数据，不会向 Claude 发任何请求">刷新列表</button>
+            <button id="btn-check-all" class="btn" title="会逐个向 Claude 发请求（每个账号间隔 3~8 秒），约需 1 分钟，可随时点停止">检查账号</button>
             <button id="btn-import" class="btn">批量导入</button>
             <button id="btn-del-expired" class="btn">删除失效</button>
             <div class="seg" role="group" aria-label="账号视图">
@@ -118,7 +119,7 @@
             </div>
           </div>
           <div id="refresh-all-progress" class="task-progress hidden">
-            <div><span>正在刷新账号</span><span class="task-progress-text"></span></div>
+            <div><span>正在检查账号</span><span class="task-progress-text"></span><button id="btn-check-stop" class="btn-sm" type="button" disabled>停止</button></div>
             <progress value="0" max="1"></progress>
           </div>
           <div class="model-strip">
@@ -404,7 +405,7 @@
           </header>
 
           <div class="toolbar">
-            <button id="btn-logs-refresh" class="btn">刷新</button>
+            <button id="btn-logs-refresh" class="btn" title="只读本地数据，不会向 Claude 发请求">刷新（本地）</button>
             <button id="btn-logs-delete" class="btn" disabled>删除选中</button>
             <div class="logs-keep">
               <span>仅保留最近</span>
@@ -447,6 +448,22 @@
               </select>
             </label>
           </div>
+        </section>
+        <section class="page hidden" id="page-graveyard">
+          <header class="page-head">
+            <div>
+              <h2>乱葬岗</h2>
+              <p class="block-desc">阵亡账号的最后一站。只从上线起记。</p>
+            </div>
+            <div class="stats" id="grave-stats"></div>
+          </header>
+
+          <div class="toolbar">
+            <button id="btn-grave-refresh" class="btn" title="只读本地数据，不会向 Claude 发请求">刷新（本地）</button>
+          </div>
+
+          <div id="grave-list" class="grave-grid"></div>
+          <div class="pager" id="grave-pager"></div>
         </section>
         <section class="page hidden log-detail-page" id="page-log-detail">
           <header class="log-detail-page-head">
@@ -505,7 +522,22 @@
                     <option value="false">否</option>
                   </select>
                 </label>
+                <label class="field"
+                  >额度均衡阈值（0 = 关闭）
+                  <input
+                    id="cfg-quota_balance_gap"
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    placeholder="0.3"
+                    class="inp"
+                  />
+                </label>
               </div>
+              <p class="block-desc">
+                5 小时剩余比最多的账号，比它低超过这个值（0.3 = 30 个百分点）的账号，本轮暂不分配。
+              </p>
             </div>
 
             <div class="settings-section">
@@ -622,6 +654,9 @@
     </div>
 
     <script src="/static/quota.js"></script>
+    <script src="/static/live.js"></script>
+    <script src="/static/prefs.js"></script>
+    <script src="/static/grave.js"></script>
     <script src="/static/app.js"></script>
   </body>
 </html>

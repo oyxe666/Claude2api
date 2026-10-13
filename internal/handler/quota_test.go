@@ -84,7 +84,12 @@ func newQuotaEnv(t *testing.T) *quotaEnv {
 	slog.SetDefault(slog.New(slog.NewTextHandler(env.logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	t.Cleanup(func() { slog.SetDefault(oldLog) })
 
+	oldCheck := checkAllOpts
+	checkAllOpts = service.QuotaBatchOptions{Gap: func() time.Duration { return 0 }, Check: service.CheckAccount}
+	t.Cleanup(func() { checkAllOpts = oldCheck })
+
 	env.engine = gin.New()
+	env.engine.POST("/api/accounts/check-all", AdminCheckAllAccounts)
 	env.engine.POST("/api/accounts/quota/refresh", AdminRefreshQuota)
 	env.engine.POST("/api/accounts/quota/refresh-all", AdminRefreshAllQuota)
 	return env

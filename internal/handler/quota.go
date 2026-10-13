@@ -55,7 +55,12 @@ func AdminRefreshAllQuota(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "没有可刷新的账号"})
 		return
 	}
+	streamQuotaBatch(c, quotaBatchOpts, emails, "批量刷新", nil)
+}
 
+// streamQuotaBatch 写 SSE 头并逐个处理 emails，每个账号后发 progress，结束发 done。
+// start 非 nil 时先发一条 start 事件。调用方负责 TryBeginQuotaBatch 与目标校验。
+func streamQuotaBatch(c *gin.Context, opts service.QuotaBatchOptions, emails []string, logName string, start any) {
 	h := c.Writer.Header()
 	h.Set("Content-Type", "text/event-stream")
 	h.Set("Cache-Control", "no-cache")
@@ -66,7 +71,6 @@ func AdminRefreshAllQuota(c *gin.Context) {
 		c.Writer.Flush()
 	}
 
-	opts := quotaBatchOpts
 	ctx := c.Request.Context()
 	if opts.Timeout > 0 {
 		var cancel context.CancelFunc
@@ -74,7 +78,10 @@ func AdminRefreshAllQuota(c *gin.Context) {
 		defer cancel()
 	}
 
-	slog.Info("[额度] 批量刷新开始", "total", len(emails))
+	if start != nil {
+		send("start", start)
+	}
+	slog.Info("[额度] "+logName+"开始", "total", len(emails))
 	sum := service.RefreshAllQuotas(ctx, opts, emails, func(p service.QuotaProgress) {
 		send("progress", gin.H{
 			"total": p.Total, "completed": p.Completed,
@@ -84,5 +91,5 @@ func AdminRefreshAllQuota(c *gin.Context) {
 		})
 	})
 	send("done", gin.H{"done": true, "total": sum.Total, "ok": sum.OK, "failed": sum.Failed, "skipped": sum.Skipped})
-	slog.Info("[额度] 批量刷新完成", "total", sum.Total, "ok", sum.OK, "failed", sum.Failed, "skipped", sum.Skipped)
+	slog.Info("[额度] "+logName+"完成", "total", sum.Total, "ok", sum.OK, "failed", sum.Failed, "skipped", sum.Skipped)
 }

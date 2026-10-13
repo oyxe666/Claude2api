@@ -537,7 +537,7 @@ func RefreshAccountQuota(ctx context.Context, email string) QuotaRefreshResult {
 // markExpired 把会话失效的账号置为 expired。无论 RemoveInvalidAccount 如何都不删号：
 // 额度查询只是读取动作，不该有破坏性副作用。
 func markExpired(email string) {
-	repository.UpdateAccount(email, func(a *repository.Account) { a.Status = "expired" })
+	repository.MarkAccountExpired(email)
 }
 
 // ---------- 批量 ----------
@@ -546,6 +546,8 @@ func markExpired(email string) {
 type QuotaBatchOptions struct {
 	Gap     func() time.Duration // 两个账号之间的间隔；nil 表示不等
 	Timeout time.Duration        // 整批总超时（由调用方套在 ctx 上，这里仅作配置携带）
+	// Check 是对单个账号的查询函数；nil 时用 RefreshAccountQuota。
+	Check func(ctx context.Context, email string) QuotaRefreshResult
 }
 
 // DefaultQuotaBatchOptions 间隔 300~800ms 随机，总超时 5 分钟。
@@ -638,7 +640,11 @@ func RefreshAllQuotas(ctx context.Context, opts QuotaBatchOptions, emails []stri
 			emit(email, stopMsg)
 			continue
 		}
-		res := RefreshAccountQuota(ctx, email)
+		check := opts.Check
+		if check == nil {
+			check = RefreshAccountQuota
+		}
+		res := check(ctx, email)
 		switch {
 		case res.Skipped && ctx.Err() != nil:
 			stopMsg = msgSkipCancel
