@@ -43,7 +43,7 @@ docker compose up -d --build
 
 > 本仓库的 `docker-compose.yml` 和 `docker-compose.local.yml` 都是用本仓库代码本地构建，不会拉取原作者的镜像。
 >
-> 两个 compose 文件默认都把端口绑定在 `8787`。如果你前面有 nginx 等反向代理、或 8787 已被占用，请复制一份并把 `ports` 改成例如 `"127.0.0.1:8788:8787"`，再用 `-f` 指定它。
+> 两个 compose 文件默认都把服务绑定在 **`127.0.0.1:8788`**（容器内端口仍是 8787），只允许本机访问，外网不能直连，适合前面放 nginx 等反向代理。如果需要对外直接开放，请把 `ports` 改成 `"8787:8787"`（此时务必设置好 API 密钥与后台密码）。下文示例里的 `localhost:8788` 对应这个默认端口。
 
 ## 核心功能
 
@@ -116,7 +116,7 @@ sk-ant-sid01-yyyyyyyy
 获取当前服务暴露的模型列表：
 
 ```bash
-curl http://localhost:8787/v1/models \
+curl http://localhost:8788/v1/models \
   -H "Authorization: Bearer <api-key>"
 ```
 
@@ -143,7 +143,7 @@ curl http://localhost:8787/v1/models \
 OpenAI Chat Completions 兼容接口，支持多轮对话、图片输入以及流式输出。图片使用 Data URI：
 
 ```bash
-curl http://localhost:8787/v1/chat/completions \
+curl http://localhost:8788/v1/chat/completions \
   -H "Authorization: Bearer <api-key>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -177,7 +177,7 @@ curl http://localhost:8787/v1/chat/completions \
 OpenAI Responses API 兼容接口，`input` 支持字符串或消息数组：
 
 ```bash
-curl http://localhost:8787/v1/responses \
+curl http://localhost:8788/v1/responses \
   -H "Authorization: Bearer <api-key>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -208,7 +208,7 @@ curl http://localhost:8787/v1/responses \
 Anthropic Messages 兼容接口，可用于接入支持自定义 Anthropic Base URL 的客户端：
 
 ```bash
-curl http://localhost:8787/v1/messages \
+curl http://localhost:8788/v1/messages \
   -H "x-api-key: <api-key>" \
   -H "anthropic-version: 2023-06-01" \
   -H "Content-Type: application/json" \

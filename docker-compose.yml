@@ -2,7 +2,7 @@ services:
   claude2api:
     build: .
     ports:
-      - "8787:8787"
+      - "127.0.0.1:8788:8787"
     volumes:
       - ./data:/app/data
       - ./config.yaml:/app/config.yaml
