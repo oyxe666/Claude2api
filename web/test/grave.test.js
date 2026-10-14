@@ -147,4 +147,67 @@ test("buildChart: 有数据时生成折线和带提示的点", () => {
   assert.strictEqual(tags.filter((t) => t === "circle").length, 2);
   assert.ok(titles.includes("2026-10-14：3 个"));
 });
+// ---- 存活统计 ----
+function svgDoc() {
+  const d = makeDoc();
+  d.createElementNS = (ns, tag) => {
+    const e = d.createElement(tag);
+    e.attrs = {};
+    e.setAttribute = (k, v) => { e.attrs[k] = v; };
+    return e;
+  };
+  return d;
+}
+test("buildSurvivalSummary: 正常与分母为 0", () => {
+  const t = G.buildSurvivalSummary(doc, { imported: 4, alive_rate: 0.5, eligible_7: 3, survived_7: 2, rate_7: 2 / 3, eligible_30: 2, survived_30: 1, rate_30: 0.5 }).map(allText).join("#");
+  for (const s of ["累计导入|4", "当前存活率|50%", "活过 7 天|67%（2/3）", "活过 30 天|50%（1/2）"]) assert.ok(t.includes(s), s);
+  const e = G.buildSurvivalSummary(doc, {}).map(allText).join("#");
+  assert.ok(e.includes("当前存活率|—") && e.includes("活过 7 天|—") && e.includes("活过 30 天|—"));
+  assert.strictEqual(G.buildSurvivalSummary(doc, null).length, 4);
+});
+test("curvePoints: 1 在顶部，0 在底部，单点居中，坐标有限", () => {
+  const pad = { l: 40, r: 12, t: 12, b: 28 };
+  const pts = G.curvePoints([{ day: 0, survival: 1 }, { day: 1, survival: 0 }], 640, 220, pad);
+  assert.strictEqual(pts[0].y, pad.t);
+  assert.strictEqual(pts[1].y, 220 - pad.b);
+  assert.ok(pts[1].x > pts[0].x);
+  const one = G.curvePoints([{ day: 0, survival: 1 }], 640, 220, pad);
+  assert.ok(Number.isFinite(one[0].x));
+  const bad = G.curvePoints([{ day: 0, survival: NaN }], 640, 220, pad);
+  assert.ok(Number.isFinite(bad[0].y));
+});
+test("buildSurvivalCurve: 空数据显示空状态；有数据生成折线和提示", () => {
+  for (const data of [[], null]) {
+    const box = G.buildSurvivalCurve(makeDoc(), data);
+    assert.ok(allText(box).includes("还没有足够的数据"));
+  }
+  const box = G.buildSurvivalCurve(svgDoc(), [{ day: 0, survival: 1 }, { day: 1, survival: 0.5 }]);
+  const tags = [];
+  const titles = [];
+  walk(box, (n) => { tags.push(n.tag); if (n.tag === "title") titles.push(n.textContent); });
+  assert.ok(tags.includes("polyline"));
+  assert.ok(titles.includes("第 1 天：50% 存活"));
+});
+test("dualPoints: 最大值为 0 时不除零；共用同一纵轴", () => {
+  const pad = { l: 32, r: 12, t: 12, b: 28 };
+  const z = G.dualPoints([{ date: "a", imported: 0, died: 0 }, { date: "b", imported: 0, died: 0 }], 640, 220, pad);
+  for (const p of z.imported.concat(z.died)) assert.ok(Number.isFinite(p.x) && Number.isFinite(p.y));
+  const d = G.dualPoints([{ date: "a", imported: 4, died: 1 }, { date: "b", imported: 0, died: 4 }], 640, 220, pad);
+  assert.strictEqual(d.max, 4);
+  assert.strictEqual(d.imported[0].y, pad.t);
+  assert.strictEqual(d.died[1].y, pad.t);
+});
+test("buildDualChart: 空数据空状态；有数据两条线、带提示的点", () => {
+  for (const data of [[], null, [{ date: "a", imported: 0, died: 0 }]]) {
+    assert.ok(allText(G.buildDualChart(makeDoc(), data)).includes("这段时间没有导入或阵亡"));
+  }
+  const box = G.buildDualChart(svgDoc(), [{ date: "2026-10-13", imported: 2, died: 0 }, { date: "2026-10-14", imported: 1, died: 3 }]);
+  const tags = [];
+  const titles = [];
+  walk(box, (n) => { tags.push(n.tag); if (n.tag === "title") titles.push(n.textContent); });
+  assert.strictEqual(tags.filter((t) => t === "polyline").length, 2);
+  assert.strictEqual(tags.filter((t) => t === "circle").length, 4);
+  assert.ok(titles.includes("2026-10-14：阵亡 3 个"));
+  assert.ok(titles.includes("2026-10-13：导入 2 个"));
+});
 console.log(`grave.test.js: ${passed} tests passed`);

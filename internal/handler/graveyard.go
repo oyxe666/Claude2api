@@ -32,3 +32,12 @@ func AdminGraveyardDaily(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"days": days, "daily": repository.GraveDailyCounts(days, time.Now())})
 }
+
+// AdminGraveyardSurvival 返回账号存活统计（存活率、Kaplan-Meier 曲线、每日导入/阵亡）。只读本地库，不访问 Claude。
+func AdminGraveyardSurvival(c *gin.Context) {
+	days := atoiDefault(c.Query("days"), 7)
+	if days != 30 {
+		days = 7
+	}
+	c.JSON(http.StatusOK, repository.GetSurvivalStats(days, time.Now()))
+}

@@ -84,9 +84,9 @@
   - 用户决定：**只在设置页**加一句预期，不读账号数据，不显示在账号页。例如定时 07:00 → “预期：每天 07:00 检查，约 12:00 起 5 小时窗口刷新”，直接把时间往后推 5 小时；跨午夜显示“次日”。纯前端计算，随时间输入实时变化，不发请求。不需要加“以实际对话为准”的提醒（原因见下）。
   - 事实核实（用户曾质疑“定时检查是否向 Claude 发请求”）：检查账号先调 `/usage` 接口（`internal/service/usage.go` 的 RefreshAccountQuota，只读，不是对话）；若窗口全为 null（免费账号），回退 `probeQuotaByChat`：给 `claude-haiku-4-5-20251001` 发 `hi`，用完即删会话，从 message_limit 事件读额度，约消耗 1 条消息。付费账号只读接口、不发对话，**未实测**；只读接口不会开启 5 小时窗口，免费号的探测对话才会开启窗口。上一位 AI 说“没找到额度接口”不准确。
   - 文案要如实：设置页“定时检查账号”说明改为“免费账号会发一条最短对话（约消耗 1 条消息）”，不要再写“每个账号发 1 次请求”。
-  - 步骤：[ ] 改 web/index.html 说明文案 + 预期句占位；[ ] web/live.js 或 web/prefs.js 加纯函数 `windowEstimate(hhmm)`（返回 {start, end, nextDay}）；[ ] web/app.js 绑定输入事件实时更新；[ ] web/test/ 加测试（普通、跨午夜、非法输入）；[ ] node 测试 + go build/vet/test 全绿；[ ] 回填本条为 [x]。
+  - 步骤（以下全部已完成）：[x] 改 web/index.html 说明文案 + 预期句占位；[x] web/live.js 加纯函数 `windowEstimate(hhmm)`（返回 {start, end, nextDay}）；[x] web/app.js 绑定输入事件实时更新；[x] web/test/ 加测试（普通、跨午夜、非法输入）；[x] node 测试 + go build/vet/test 全绿；[x] 回填本条为 [x]。
 - [x] 3 定时刷新：账号页顶部状态行（2026-10-14 完成：web/index.html 新增 #schedule-line；web/live.js 新增 scheduleLine（未开启 / 尚未运行 / 进行中 / 上次成功失败数 + 下次今天·明天·日期）；web/app.js 新增 loadScheduleLine，进入页面、回到前台、收到 SSE schedule 事件时重读 /api/schedule/status。后端：service/events.go 新增 SubscribeScheduleEvents / PublishScheduleChanged，handler/events.go 推 `event: schedule`，RunScheduledCheck 开始与结束各广播一次；不新增任何对 Claude 的请求，不改检查行为和间隔。测试：新增 live.test.js 5 个（共 16）、schedule_events_test.go 1 个；go build/vet/test 全绿，node 测试 4 个文件全过，node --check 通过；未提交、未部署；浏览器点击未实测）
-- [ ] 提交、推送 GitHub、服务器备份并部署（每步先问用户）
+- [x] 提交、推送 GitHub、服务器备份并部署（2026-10-14 已核实：本地、GitHub、服务器 git 记录均为 499ebf4，服务器工作区干净，容器正常运行于 127.0.0.1:8788；服务器 config.yaml 已含 schedule_enabled: false / schedule_time: "06:00"，定时检查默认关闭，data/schedule_state.json 尚未生成，说明从未跑过；浏览器点击效果与定时检查实际运行均未实测；用户决定暂不测付费账号，先把免费账号做好）
 
 （每项完成后在此补：日期、提交哈希、是否已部署、遗留问题。）
 
@@ -95,3 +95,35 @@
 - 配置项 `proxy`，后台“系统管理”里有输入框；留空则直连。全局一个代理，所有账号共用，不能按账号分配。
 - 想“每个账号一个出口 IP”是另一个功能，用户尚未要求。
 - 代理地址含账号密码，**不要让用户发到对话里**，让他自己填进后台。
+
+## 8. 账号存活统计（2026-10-14 用户确认，进行中）
+
+需求：记录导入过多少号、死了多少号、存活率、平均存活曲线。和乱葬岗同一页（新增统计区）。
+
+设计（不新增表，从现有数据推导）：
+- 导入时间：存活账号取 accounts.created_at，已阵亡取 graveyard.joined_at。
+- 累计导入 = 现存账号数 + 乱葬岗记录数。上线乱葬岗之前就删掉的账号没有记录，统计只覆盖「现存 + 乱葬岗上线后阵亡」，页面要写明。
+- 存活率：同时给两种口径：(1) 当前存活 / 累计导入；(2) 活过 7 天、30 天的比例（只统计已满 7/30 天的账号，存活账号按“还活着”处理）。
+- 存活曲线：Kaplan-Meier（活着的账号视为未结束，不算死亡），横轴天数，纵轴存活比例。
+- 第二张图：每日导入数 vs 每日阵亡数双线图（北京日期，补零，近 7/30 天可切换）。
+- 接口：GET /api/graveyard/survival（只读本地库，不访问 Claude），admin 鉴权。
+- 前端：web/grave.js 加纯函数 + SVG，沿用 buildChart 风格；node 测试覆盖空数据、全活、全死、除零。
+- 注意：需先核实 UpsertAccount 重复导入时是否重置 created_at，否则导入时间会失真。
+
+**用户决定（2026-10-14）：选方案 1**：重复导入同一邮箱时**保留首次导入时间**，不再重置 created_at（UpsertAccount 的 DoUpdates 去掉 created_at）。影响：账号详情里的存活时长会随之变长，这是预期行为。
+
+步骤（做完一步立刻改成 [x] 并补一行记录）：
+- [x] 1 核实 created_at 行为（2026-10-14 已核实：internal/repository/account.go 的 UpsertAccount 在 DoUpdates 里列了 created_at，重复导入会把它重置为新时间；其它路径 UpdateAccount 用 Save，不改 created_at）
+- [x] 2 改 UpsertAccount（2026-10-14 已改：internal/repository/account.go 的 DoUpdates 去掉 created_at，重复导入保留首次导入时间；测试待补，见下一步；未提交、未部署）
+- [x] 2b 补测试（2026-10-14 完成：internal/repository/account_test.go 的 TestUpsertAccountKeepsCreatedAt，验证重复导入后 created_at 不变、cookies/org_uuid 照常更新、quota 不被清空；repository 包含乱葬岗原有测试全部通过；未提交、未部署）
+- [x] 3 repository 统计函数（2026-10-14 完成：internal/repository/survival.go 的 GetSurvivalStats(days, now)，返回累计导入/存活/阵亡/存活率、活过 7/30 天口径（只统计导入已满 N 天的账号）、Kaplan-Meier 曲线、近 7/30 天每日导入与阵亡（北京日期补零）；现存但状态为 expired 的账号按阵亡算，死亡时间取 updated_at；survival_test.go 3 个测试（空库、混合、全活）+ 原有测试全部通过；gofmt/vet 通过；未提交、未部署；遗留：全死场景未单独测试）
+- [x] 4 handler + 路由（2026-10-14 完成：internal/handler/graveyard.go 新增 AdminGraveyardSurvival，internal/router/router.go 挂 GET /api/graveyard/survival（admin 鉴权，days 只认 7/30）；router_test.go 新增 TestGraveyardSurvivalRequiresAdminAuth（无凭据、错误密码均 401）；go build、vet、handler/router 测试通过；未提交、未部署）
+- [x] 5 前端（2026-10-14 完成，node 测试 4 个文件全过：grave 18、live 16、prefs 6、quota 38；node --check 通过；浏览器点击未实测；未提交、未部署）：web/grave.js 新增 buildSurvivalSummary（存活率文字）、buildSurvivalCurve（Kaplan-Meier 折线）、buildDualChart（每日导入/阵亡双线）；web/index.html 乱葬岗页加“存活统计”区；web/app.js 新增 loadSurvival 并在 loadGraveyard 和 7/30 天切换时调用；web/style.css 补双线样式；web/test/grave.test.js 补测试。完成后改 [x]。
+- [x] 6 全量 go build/vet/test + node 测试（2026-10-14 全部通过：go build、go vet、go test ./...（跳过 SDKToolCall）各包均 ok；node 测试 4 个文件全过：grave 18、live 16、prefs 6、quota 38；未提交、未部署）
+- [x] 7 回填本节（2026-10-14 完成：第 8 节全部步骤已做完，代码均为本地未提交、未部署，等用户决定；浏览器点击未实测；遗留：全死场景未单独测试；上线前旧账号的 created_at 若曾被重复导入重置过，其存活时长无法还原）
+
+## 9. 已解答：额度耗光的号还会被打请求吗
+- 选号时会跳过：dispatcher.go skipExhausted 跳过 5h/7d 窗口 exceeded_limit 或用量>=100% 且未到重置时间的账号；没有重置时间则从快照起保守等 10 分钟。
+- 例外一：全部账号都耗尽时原样放行，让请求拿到真实报错。
+- 例外二：额度快照只在对话后更新，快照过旧时可能多打一次；打到后上游返回耗尽事件，快照随即更新，之后会被跳过。
+- 请求中途已输出内容后不换号；未输出就失败会按 retry_count 换号。

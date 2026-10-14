@@ -222,3 +222,20 @@ func TestGraveyardDailyRequiresAdminAuth(t *testing.T) {
 		t.Fatalf("code = %d, want 401", w.Code)
 	}
 }
+
+// 乱葬岗存活统计接口必须有管理鉴权。
+func TestGraveyardSurvivalRequiresAdminAuth(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := NewMainEngine()
+	for _, auth := range []string{"", "Bearer wrong-password"} {
+		req := httptest.NewRequest(http.MethodGet, "/api/graveyard/survival?days=7", nil)
+		if auth != "" {
+			req.Header.Set("Authorization", auth)
+		}
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("auth=%q: code = %d, want 401", auth, w.Code)
+		}
+	}
+}

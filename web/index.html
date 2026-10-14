@@ -470,6 +470,15 @@
             </div>
             <div id="grave-chart-box"></div>
           </div>
+          <div class="grave-chart-wrap">
+            <h3 class="block-title">账号存活统计</h3>
+            <p class="block-desc">只统计现存账号和乱葬岗上线后的阵亡账号；只读本地数据，不会向 Claude 发请求。</p>
+            <div class="stats" id="survival-summary"></div>
+            <h4 class="block-title">平均存活曲线</h4>
+            <div id="survival-curve-box"></div>
+            <h4 class="block-title">每日导入 vs 阵亡（蓝：导入，红：阵亡；范围随上方近 7/30 天切换）</h4>
+            <div id="survival-daily-box"></div>
+          </div>
           <div id="grave-list" class="grave-grid"></div>
           <div class="pager" id="grave-pager"></div>
         </section>

@@ -1035,6 +1035,26 @@ async function loadGraveChart() {
   }
 }
 
+async function loadSurvival() {
+  const sum = $("#survival-summary");
+  const curve = $("#survival-curve-box");
+  const daily = $("#survival-daily-box");
+  if (!sum || !curve || !daily) return;
+  try {
+    const s = await api(`/api/graveyard/survival?days=${graveDays}`);
+    sum.textContent = "";
+    GraveUI.buildSurvivalSummary(document, s).forEach((x) => sum.appendChild(x));
+    curve.textContent = "";
+    curve.appendChild(GraveUI.buildSurvivalCurve(document, s.curve || []));
+    daily.textContent = "";
+    daily.appendChild(GraveUI.buildDualChart(document, s.daily || []));
+  } catch (e) {
+    sum.textContent = "";
+    curve.textContent = "";
+    daily.textContent = "";
+  }
+}
+
 async function loadGraveyard() {
   try {
     const [list, stats] = await Promise.all([
@@ -1055,6 +1075,7 @@ async function loadGraveyard() {
     }
     renderGravePager();
     loadGraveChart();
+    loadSurvival();
   } catch (e) {
     showMsg("加载乱葬岗失败: " + e.message, "err");
   }
@@ -1398,6 +1419,7 @@ document.querySelectorAll("[data-gdays]").forEach((b) => {
       x.setAttribute("aria-pressed", String(on));
     });
     loadGraveChart();
+    loadSurvival();
   });
 });
 $("#btn-grave-refresh").addEventListener("click", () => {

@@ -44,7 +44,7 @@ func UpsertAccount(a *Account) error {
 	return db.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "email"}},
 		// 只更新这些列，避免重新导入账号时把 quota（额度快照）清空。
-		DoUpdates: clause.AssignmentColumns([]string{"org_uuid", "cookies", "status", "created_at", "updated_at"}),
+		DoUpdates: clause.AssignmentColumns([]string{"org_uuid", "cookies", "status", "updated_at"}),
 	}).Create(a).Error
 }
 

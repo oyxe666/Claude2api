@@ -2417,3 +2417,7 @@ body[data-page="login"] .err {
 .chart-dot { fill: var(--accent); stroke: var(--bg); stroke-width: 2; transition: r .15s ease; }
 .chart-dot:hover, .chart-dot:focus-visible { r: 6; outline: none; }
 @media (prefers-reduced-motion: reduce) { .chart-dot { transition: none; } }
+.chart-line-dead { stroke: #e5484d; }
+.chart-dot-dead { fill: #e5484d; }
+.grave-chart-wrap .block-title { margin: 12px 0 6px; font-size: 14px; }
+.grave-chart-wrap .stats { margin: 8px 0; }
