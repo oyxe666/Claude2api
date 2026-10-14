@@ -2406,3 +2406,14 @@ body[data-page="login"] .err {
   .pool-card:hover, .quota-card:hover, .grave-card:hover, .btn:active, .btn-sm:active { transform: none !important; }
   .msg { opacity: 1; transform: translate(-50%, 0); }
 }
+
+/* 乱葬岗曲线图 */
+.grave-chart-wrap { margin: 0 0 16px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg); }
+.grave-chart-wrap .seg { margin-bottom: 8px; }
+.grave-chart-svg { width: 100%; height: auto; max-height: 240px; display: block; }
+.chart-axis { stroke: var(--border-strong); stroke-width: 1; }
+.chart-label { fill: var(--muted); font-size: 11px; }
+.chart-line { stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart-dot { fill: var(--accent); stroke: var(--bg); stroke-width: 2; transition: r .15s ease; }
+.chart-dot:hover, .chart-dot:focus-visible { r: 6; outline: none; }
+@media (prefers-reduced-motion: reduce) { .chart-dot { transition: none; } }

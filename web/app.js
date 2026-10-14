@@ -57,6 +57,8 @@ const CONFIG_FIELDS = [
   "status_check_interval_seconds",
   "remove_invalid_account",
   "quota_balance_gap",
+  "schedule_enabled",
+  "schedule_time",
 ];
 
 const CONFIG_DEFAULTS = {
@@ -67,6 +69,8 @@ const CONFIG_DEFAULTS = {
   status_check_interval_seconds: 21600,
   remove_invalid_account: false,
   quota_balance_gap: 0.3,
+  schedule_enabled: false,
+  schedule_time: "06:00",
 };
 
 async function api(path, method = "GET", body = null, stream = false, signal = null) {
@@ -635,6 +639,10 @@ function startLive() {
     if (!LiveUI.mergeEventAccount(ACCOUNTS, d && d.account)) return;
     if (!document.hidden && !$("#page-accounts").classList.contains("hidden")) rerender();
   });
+  es.addEventListener("schedule", () => {
+    loadScheduleLine();
+    loadScheduleStatus();
+  });
   es.onerror = () => {
     es.close();
     if (liveSource === es) liveSource = null;
@@ -748,8 +756,56 @@ async function loadConfig() {
       if (!el) continue;
       el.value = String(c[k] ?? CONFIG_DEFAULTS[k] ?? "");
     }
+    updateScheduleEstimate();
+    loadScheduleStatus();
   } catch (e) {
     showMsg("加载配置失败: " + e.message, "err");
+  }
+}
+
+// 定时检查状态：只读本地数据，不向 Claude 发请求
+function fmtScheduleTime(iso) {
+  const d = new Date(iso);
+  if (!iso || isNaN(d) || d.getFullYear() < 2000) return "";
+  return d.toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
+}
+
+function updateScheduleEstimate() {
+  const box = $("#schedule-estimate"), inp = $("#cfg-schedule_time");
+  if (!box || !inp) return;
+  const w = LiveUI.windowEstimate(inp.value);
+  box.textContent = w ? `预期：每天 ${w.start} 检查，约 ${w.nextDay ? "次日 " : ""}${w.end} 起 5 小时窗口刷新` : "";
+}
+(function () {
+  const inp = $("#cfg-schedule_time");
+  if (inp) inp.addEventListener("input", updateScheduleEstimate);
+})();
+
+async function loadScheduleStatus() {
+  const box = $("#schedule-status");
+  if (!box) return;
+  try {
+    const s = await api("/api/schedule/status");
+    const parts = [];
+    const last = fmtScheduleTime(s.last_run_at);
+    parts.push(last ? `上次定时检查：${last}（北京时间），成功 ${s.ok}，失败 ${s.failed}，跳过 ${s.skipped}` : "上次定时检查：暂无记录");
+    const next = s.enabled ? fmtScheduleTime(s.next_run_at) : "";
+    parts.push(next ? `下次：${next}（北京时间）` : "当前未启用");
+    box.textContent = parts.join("；");
+  } catch (e) {
+    box.textContent = "";
+  }
+}
+
+// 账号页顶部的定时检查状态行（只读本地数据）
+async function loadScheduleLine() {
+  const line = $("#schedule-line");
+  if (!line) return;
+  try {
+    const s = await api("/api/schedule/status");
+    line.textContent = LiveUI.scheduleLine(s, Date.now());
+  } catch (e) {
+    line.textContent = "";
   }
 }
 
@@ -966,6 +1022,19 @@ function renderGravePager() {
   pager.innerHTML = html;
 }
 
+let graveDays = 7;
+async function loadGraveChart() {
+  const box = $("#grave-chart-box");
+  if (!box) return;
+  try {
+    const d = await api(`/api/graveyard/daily?days=${graveDays}`);
+    box.textContent = "";
+    box.appendChild(GraveUI.buildChart(document, d.daily || []));
+  } catch (e) {
+    box.textContent = "";
+  }
+}
+
 async function loadGraveyard() {
   try {
     const [list, stats] = await Promise.all([
@@ -985,6 +1054,7 @@ async function loadGraveyard() {
       graves.forEach((g) => box.appendChild(GraveUI.buildTomb(document, g, { fmtTime })));
     }
     renderGravePager();
+    loadGraveChart();
   } catch (e) {
     showMsg("加载乱葬岗失败: " + e.message, "err");
   }
@@ -1319,6 +1389,17 @@ $("#btn-logs-refresh").addEventListener("click", () => {
   loadLogs();
 });
 $("#btn-logs-delete").addEventListener("click", deleteSelectedLogs);
+document.querySelectorAll("[data-gdays]").forEach((b) => {
+  b.addEventListener("click", () => {
+    graveDays = Number(b.dataset.gdays) === 30 ? 30 : 7;
+    document.querySelectorAll("[data-gdays]").forEach((x) => {
+      const on = x === b;
+      x.classList.toggle("active", on);
+      x.setAttribute("aria-pressed", String(on));
+    });
+    loadGraveChart();
+  });
+});
 $("#btn-grave-refresh").addEventListener("click", () => {
   gravePage = 1;
   loadGraveyard();
@@ -1473,11 +1554,13 @@ if (currentRole !== "admin") {
 } else {
   refreshAccountsPage();
   loadConfig();
+  loadScheduleLine();
   startLive();
   // 切走标签页时断开推送省连接；回到前台重读一次本地列表（不向 Claude 发请求）并重连。
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) return stopLive();
     loadAccounts();
+    loadScheduleLine();
     startLive();
   });
 }

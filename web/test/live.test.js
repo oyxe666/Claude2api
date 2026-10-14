@@ -75,4 +75,37 @@ test("estimateMinutes", () => {
   assert.strictEqual(L.estimateMinutes(0, 3, 8), 1);
 });
 
+test("windowEstimate: 普通与跨午夜", () => {
+  assert.deepStrictEqual(L.windowEstimate("07:00"), { start: "07:00", end: "12:00", nextDay: false });
+  assert.deepStrictEqual(L.windowEstimate("22:30"), { start: "22:30", end: "03:30", nextDay: true });
+  assert.deepStrictEqual(L.windowEstimate("6:05"), { start: "06:05", end: "11:05", nextDay: false });
+});
+test("windowEstimate: 非法输入返回 null", () => {
+  for (const v of ["", null, "abc", "25:00", "12:61", "12"]) assert.strictEqual(L.windowEstimate(v), null);
+});
+
+// 北京时间 2026-10-14 12:00 = UTC 04:00
+const NOW = Date.parse("2026-10-14T04:00:00Z");
+test("scheduleLine: 未开启", () => {
+  assert.strictEqual(L.scheduleLine({ enabled: false }, NOW), "定时检查未开启");
+  assert.strictEqual(L.scheduleLine(null, NOW), "定时检查未开启");
+});
+test("scheduleLine: 有上次结果，下次是明天", () => {
+  const s = { enabled: true, last_run_at: "2026-10-13T23:00:00Z", total: 15, ok: 14, failed: 1, skipped: 0, next_run_at: "2026-10-14T23:00:00Z" };
+  assert.strictEqual(L.scheduleLine(s, NOW), "上次定时检查：10-14 07:00（北京时间），成功 14 / 失败 1；下次：明天 07:00");
+});
+test("scheduleLine: 尚未运行，下次是今天", () => {
+  const s = { enabled: true, last_run_at: "0001-01-01T00:00:00Z", next_run_at: "2026-10-14T10:00:00Z" };
+  assert.strictEqual(L.scheduleLine(s, NOW), "上次定时检查：尚未运行；下次：今天 18:00");
+});
+test("scheduleLine: 进行中", () => {
+  const s = { enabled: true, last_run_at: "2026-10-14T03:00:00Z", total: 10, ok: 3, failed: 0, skipped: 0, next_run_at: "2026-10-14T23:00:00Z" };
+  assert.strictEqual(L.scheduleLine(s, NOW), "定时检查进行中（3/10）；下次：明天 07:00");
+});
+test("scheduleLine: 下次更远显示日期，缺失则省略", () => {
+  const s = { enabled: true, last_run_at: "2026-10-13T23:00:00Z", ok: 1, failed: 0, total: 1, next_run_at: "2026-10-16T23:00:00Z" };
+  assert.ok(L.scheduleLine(s, NOW).endsWith("下次：10-17 07:00"));
+  delete s.next_run_at;
+  assert.ok(!L.scheduleLine(s, NOW).includes("下次"));
+});
 console.log(`live.test.js: ${passed} tests passed`);

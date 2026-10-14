@@ -28,6 +28,9 @@ type Settings struct {
 	DetailedAPILog             bool   `json:"detailed_api_log" yaml:"detailed_api_log"`
 	// QuotaBalanceGap 额度均衡阈值（0~1）：5 小时剩余比最大者低超过该值的账号本轮不分配；0 关闭。
 	QuotaBalanceGap float64 `json:"quota_balance_gap" yaml:"quota_balance_gap"`
+	// ScheduleEnabled 定时检查账号开关（默认关）；ScheduleTime 为北京时间 "HH:MM"，非法时回退 "06:00"。
+	ScheduleEnabled bool   `json:"schedule_enabled" yaml:"schedule_enabled"`
+	ScheduleTime    string `json:"schedule_time" yaml:"schedule_time"`
 }
 
 var (
@@ -56,7 +59,7 @@ func Load() {
 	}
 	configPath = filepath.Join(baseDir, "config.yaml")
 	ensureConfig(configPath)
-	current = Settings{WebHost: "127.0.0.1", WebPort: 8787, WebUCHost: "localhost", StatusCheckIntervalSeconds: 21600, ChatDelete: true, MaxChatHistoryLength: 12000, QuotaBalanceGap: 0.30}
+	current = Settings{WebHost: "127.0.0.1", WebPort: 8787, WebUCHost: "localhost", StatusCheckIntervalSeconds: 21600, ChatDelete: true, MaxChatHistoryLength: 12000, QuotaBalanceGap: 0.30, ScheduleTime: DefaultScheduleTime}
 	data, _ := os.ReadFile(configPath)
 	_ = yaml.Unmarshal(data, &current)
 	current.Proxy = strings.TrimSpace(current.Proxy)
@@ -76,6 +79,7 @@ func Load() {
 		current.MaxChatHistoryLength = 12000
 	}
 	current.QuotaBalanceGap = clampGap(current.QuotaBalanceGap)
+	current.ScheduleTime = NormalizeScheduleTime(current.ScheduleTime)
 }
 
 // clampGap 把均衡阈值夹到 [0,1]；NaN 视为 0（关闭）。
@@ -87,6 +91,24 @@ func clampGap(g float64) float64 {
 		return 1
 	}
 	return g
+}
+
+// DefaultScheduleTime 是定时检查账号的默认时间（北京时间）。
+const DefaultScheduleTime = "06:00"
+
+// NormalizeScheduleTime 校验 "HH:MM"（00:00~23:59）；非法返回默认值，合法则补零成两位格式。
+func NormalizeScheduleTime(s string) string {
+	s = strings.TrimSpace(s)
+	parts := strings.Split(s, ":")
+	if len(parts) != 2 {
+		return DefaultScheduleTime
+	}
+	h, err1 := strconv.Atoi(strings.TrimSpace(parts[0]))
+	m, err2 := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if err1 != nil || err2 != nil || h < 0 || h > 23 || m < 0 || m > 59 {
+		return DefaultScheduleTime
+	}
+	return fmt.Sprintf("%02d:%02d", h, m)
 }
 
 // parseGap 解析阈值；无法解析或为 NaN/Inf 时返回 false（调用方保持原值）。
@@ -163,6 +185,11 @@ func Update(patch map[string]any) Settings {
 			if g, ok := parseGap(v); ok {
 				current.QuotaBalanceGap = g
 			}
+		case "schedule_enabled":
+			current.ScheduleEnabled = mustBool(v)
+		case "schedule_time":
+			// 非法格式回退默认值，避免定时任务悄悄失效。
+			current.ScheduleTime = NormalizeScheduleTime(fmt.Sprint(v))
 		}
 	}
 	writeConfig()

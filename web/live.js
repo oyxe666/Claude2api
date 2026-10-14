@@ -54,7 +54,57 @@
     return Math.max(1, Math.ceil((count * (minSec + maxSec)) / 2 / 60));
   }
 
-  const api = { parseSSE, reconnectDelay, mergeEventAccount, estimateMinutes };
+  // 预期 5 小时窗口时间：定时时间往后推 5 小时。非法输入返回 null。
+  // 返回 { start: "HH:MM", end: "HH:MM", nextDay: bool }，nextDay 表示结束时间跨午夜到了次日。
+  function windowEstimate(hhmm) {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || "").trim());
+    if (!m) return null;
+    const h = Number(m[1]), mi = Number(m[2]);
+    if (h > 23 || mi > 59) return null;
+    const total = h * 60 + mi + 5 * 60;
+    const eh = Math.floor((total % 1440) / 60), em = total % 60;
+    const pad = (n) => String(n).padStart(2, "0");
+    return { start: pad(h) + ":" + pad(mi), end: pad(eh) + ":" + pad(em), nextDay: total >= 1440 };
+  }
+
+  // 把时间转成北京时间的 { ymd, md, hm }；非法或零值（年份 < 2000）返回 null。
+  function bjParts(iso) {
+    if (!iso) return null;
+    const t = new Date(iso).getTime();
+    if (isNaN(t) || new Date(t).getUTCFullYear() < 2000) return null;
+    const d = new Date(t + 8 * 3600 * 1000);
+    const pad = (n) => String(n).padStart(2, "0");
+    const md = pad(d.getUTCMonth() + 1) + "-" + pad(d.getUTCDate());
+    return { ymd: d.getUTCFullYear() + "-" + md, md, hm: pad(d.getUTCHours()) + ":" + pad(d.getUTCMinutes()), t };
+  }
+
+  // 账号页顶部的定时检查状态文案。s 是 /api/schedule/status 的返回，nowMs 是当前毫秒时间。
+  function scheduleLine(s, nowMs) {
+    if (!s || !s.enabled) return "定时检查未开启";
+    const now = bjParts(nowMs);
+    const last = bjParts(s.last_run_at);
+    const done = (s.ok || 0) + (s.failed || 0) + (s.skipped || 0);
+    let head;
+    if (!last) {
+      head = "上次定时检查：尚未运行";
+    } else if (s.total > 0 && done < s.total && nowMs - last.t < 6 * 3600 * 1000) {
+      head = `定时检查进行中（${done}/${s.total}）`;
+    } else {
+      head = `上次定时检查：${last.md} ${last.hm}（北京时间），成功 ${s.ok || 0} / 失败 ${s.failed || 0}`;
+    }
+    const next = bjParts(s.next_run_at);
+    if (!next) return head;
+    let day = next.md;
+    if (now) {
+      const dayMs = 24 * 3600 * 1000;
+      const diff = Math.round((Date.parse(next.ymd) - Date.parse(now.ymd)) / dayMs);
+      if (diff === 0) day = "今天";
+      else if (diff === 1) day = "明天";
+    }
+    return `${head}；下次：${day} ${next.hm}`;
+  }
+
+  const api = { parseSSE, reconnectDelay, mergeEventAccount, estimateMinutes, windowEstimate, scheduleLine };
   root.LiveUI = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);

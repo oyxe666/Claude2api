@@ -90,7 +90,63 @@
     return el(doc, "div", "empty", "还没有账号阵亡");
   }
 
-  const api = { reasonLabel, fmtLifespan, quotaText, epitaph, buildStats, buildTomb, buildEmpty };
+  // 每日阵亡折线图：纯 SVG，用 createElementNS 构造，不拼 HTML。daily = [{date, count}]。
+  const SVGNS = "http://www.w3.org/2000/svg";
+  function chartPoints(daily, w, h, pad) {
+    const n = daily.length;
+    const max = Math.max(1, ...daily.map((d) => Number(d.count) || 0));
+    const iw = w - pad.l - pad.r;
+    const ih = h - pad.t - pad.b;
+    return daily.map((d, i) => ({
+      date: d.date,
+      count: Number(d.count) || 0,
+      x: pad.l + (n <= 1 ? iw / 2 : (iw * i) / (n - 1)),
+      y: pad.t + ih - (ih * (Number(d.count) || 0)) / max,
+    }));
+  }
+
+  function svgEl(doc, tag, attrs) {
+    const e = doc.createElementNS(SVGNS, tag);
+    for (const k in attrs || {}) e.setAttribute(k, String(attrs[k]));
+    return e;
+  }
+
+  function buildChart(doc, daily) {
+    const box = el(doc, "div", "grave-chart");
+    const list = Array.isArray(daily) ? daily : [];
+    if (!list.some((d) => Number(d.count) > 0)) {
+      box.appendChild(el(doc, "div", "empty", "这段时间没有账号阵亡"));
+      return box;
+    }
+    const w = 640, h = 220, pad = { l: 32, r: 12, t: 12, b: 28 };
+    const pts = chartPoints(list, w, h, pad);
+    const max = Math.max(1, ...pts.map((p) => p.count));
+    const svg = svgEl(doc, "svg", { viewBox: `0 0 ${w} ${h}`, role: "img", "aria-label": "每日阵亡数折线图", class: "grave-chart-svg" });
+    svg.appendChild(svgEl(doc, "line", { x1: pad.l, y1: h - pad.b, x2: w - pad.r, y2: h - pad.b, class: "chart-axis" }));
+    const top = svgEl(doc, "text", { x: pad.l - 6, y: pad.t + 4, "text-anchor": "end", class: "chart-label" });
+    top.textContent = String(max);
+    svg.appendChild(top);
+    const zero = svgEl(doc, "text", { x: pad.l - 6, y: h - pad.b, "text-anchor": "end", class: "chart-label" });
+    zero.textContent = "0";
+    svg.appendChild(zero);
+    svg.appendChild(svgEl(doc, "polyline", { points: pts.map((p) => p.x.toFixed(1) + "," + p.y.toFixed(1)).join(" "), class: "chart-line", fill: "none" }));
+    pts.forEach((p, i) => {
+      const c = svgEl(doc, "circle", { cx: p.x.toFixed(1), cy: p.y.toFixed(1), r: 4, class: "chart-dot", tabindex: 0 });
+      const t = svgEl(doc, "title", {});
+      t.textContent = p.date + "：" + p.count + " 个";
+      c.appendChild(t);
+      svg.appendChild(c);
+      if (i === 0 || i === pts.length - 1) {
+        const l = svgEl(doc, "text", { x: p.x.toFixed(1), y: h - 8, "text-anchor": i === 0 ? "start" : "end", class: "chart-label" });
+        l.textContent = p.date.slice(5);
+        svg.appendChild(l);
+      }
+    });
+    box.appendChild(svg);
+    return box;
+  }
+
+  const api = { reasonLabel, fmtLifespan, quotaText, epitaph, buildStats, buildTomb, buildEmpty, buildChart, chartPoints };
   root.GraveUI = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);

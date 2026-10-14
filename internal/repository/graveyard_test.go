@@ -230,3 +230,44 @@ func TestAutoMigrateKeepsOldData(t *testing.T) {
 		t.Fatal("账号数据不应变")
 	}
 }
+
+// 每日阵亡数：按北京日期分组、补零、含手动删除、跨北京午夜。
+func TestGraveDailyCounts(t *testing.T) {
+	graveDB(t)
+	bj := time.FixedZone("CST", 8*3600)
+	now := time.Date(2026, 10, 14, 12, 0, 0, 0, bj)
+	mk := func(email, reason string, died time.Time) {
+		if err := db.Create(&Grave{Email: email, DiedAt: died.UTC(), Reason: reason}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	// 北京 10-14 00:30 = UTC 10-13 16:30，应算 10-14
+	mk("a@example.com", GraveSessionInvalid, time.Date(2026, 10, 14, 0, 30, 0, 0, bj))
+	// 北京 10-13 23:30，应算 10-13（手动删除也计入）
+	mk("b@example.com", GraveManualDelete, time.Date(2026, 10, 13, 23, 30, 0, 0, bj))
+	mk("c@example.com", GraveAutoRemoved, time.Date(2026, 10, 13, 8, 0, 0, 0, bj))
+	// 8 天前，不在 7 天范围内
+	mk("d@example.com", GraveSessionInvalid, time.Date(2026, 10, 6, 8, 0, 0, 0, bj))
+
+	d7 := GraveDailyCounts(7, now)
+	if len(d7) != 7 || d7[0].Date != "2026-10-08" || d7[6].Date != "2026-10-14" {
+		t.Fatalf("7 天范围不对: %+v", d7)
+	}
+	if d7[6].Count != 1 || d7[5].Count != 2 || d7[0].Count != 0 {
+		t.Fatalf("计数不对: %+v", d7)
+	}
+	d30 := GraveDailyCounts(30, now)
+	if len(d30) != 30 {
+		t.Fatalf("30 天长度 = %d", len(d30))
+	}
+	total := 0
+	for _, d := range d30 {
+		total += d.Count
+	}
+	if total != 4 {
+		t.Fatalf("30 天总数 = %d, want 4", total)
+	}
+	if len(GraveDailyCounts(99, now)) != 7 {
+		t.Fatal("非法 days 应按 7")
+	}
+}

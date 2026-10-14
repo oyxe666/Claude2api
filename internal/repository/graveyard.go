@@ -131,3 +131,38 @@ func GetGraveStats() GraveStats {
 	st.Last7Days = int(recent)
 	return st
 }
+
+// GraveDaily 是某个北京日期的阵亡数。
+type GraveDaily struct {
+	Date  string `json:"date"`
+	Count int    `json:"count"`
+}
+
+// graveBeijing 是固定的北京时区，不依赖服务器时区。
+var graveBeijing = time.FixedZone("CST", 8*3600)
+
+// GraveDailyCounts 返回截至 now 的最近 days 个北京日期的每日阵亡数（含手动删除），没有阵亡的日期补零，按日期升序。
+// days 只接受 7 或 30，其它值按 7。DiedAt 存 UTC，在 Go 里换算北京日期分组。
+func GraveDailyCounts(days int, now time.Time) []GraveDaily {
+	if days != 30 {
+		days = 7
+	}
+	n := now.In(graveBeijing)
+	today := time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, graveBeijing)
+	start := today.AddDate(0, 0, -(days - 1))
+	counts := map[string]int{}
+	if db != nil {
+		var rows []Grave
+		if db.Select("died_at").Where("died_at >= ?", start.UTC()).Find(&rows).Error == nil {
+			for _, g := range rows {
+				counts[g.DiedAt.In(graveBeijing).Format("2006-01-02")]++
+			}
+		}
+	}
+	out := make([]GraveDaily, 0, days)
+	for i := 0; i < days; i++ {
+		d := start.AddDate(0, 0, i).Format("2006-01-02")
+		out = append(out, GraveDaily{Date: d, Count: counts[d]})
+	}
+	return out
+}

@@ -102,6 +102,37 @@ func PublishQuotaChanged(email string) {
 	}
 }
 
+// 定时检查状态变化通知：开始/结束时广播一次，前端收到后重读 /api/schedule/status。
+var (
+	scheduleSubsMu sync.Mutex
+	scheduleSubs   = map[chan struct{}]struct{}{}
+)
+
+// SubscribeScheduleEvents 订阅定时检查状态变化；cancel 取消订阅（可重复调用）。
+func SubscribeScheduleEvents() (ch <-chan struct{}, cancel func()) {
+	c := make(chan struct{}, 1)
+	scheduleSubsMu.Lock()
+	scheduleSubs[c] = struct{}{}
+	scheduleSubsMu.Unlock()
+	return c, func() {
+		scheduleSubsMu.Lock()
+		delete(scheduleSubs, c)
+		scheduleSubsMu.Unlock()
+	}
+}
+
+// PublishScheduleChanged 通知所有订阅者定时检查状态变了。不阻塞。
+func PublishScheduleChanged() {
+	scheduleSubsMu.Lock()
+	defer scheduleSubsMu.Unlock()
+	for c := range scheduleSubs {
+		select {
+		case c <- struct{}{}:
+		default: // 已有一条待处理通知，合并
+		}
+	}
+}
+
 // InstallQuotaBroadcast 把广播挂到 repository 的额度变更回调上（启动时调用一次）。
 func InstallQuotaBroadcast() {
 	repository.OnQuotaChanged = PublishQuotaChanged

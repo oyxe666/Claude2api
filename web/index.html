@@ -107,6 +107,7 @@
           </header>
 
           <div id="quota-overview" class="quota-overview"></div>
+          <p id="schedule-line" class="block-desc"></p>
 
           <div class="toolbar">
             <button id="btn-refresh" class="btn" title="只重新读取本地数据，不会向 Claude 发任何请求" aria-label="刷新列表：只重新读取本地数据，不会向 Claude 发任何请求">刷新列表</button>
@@ -462,6 +463,13 @@
             <button id="btn-grave-refresh" class="btn" title="只读本地数据，不会向 Claude 发请求">刷新（本地）</button>
           </div>
 
+          <div class="grave-chart-wrap">
+            <div class="seg" role="group" aria-label="曲线范围">
+              <button type="button" class="seg-btn active" data-gdays="7" aria-pressed="true">近 7 天</button>
+              <button type="button" class="seg-btn" data-gdays="30" aria-pressed="false">近 30 天</button>
+            </div>
+            <div id="grave-chart-box"></div>
+          </div>
           <div id="grave-list" class="grave-grid"></div>
           <div class="pager" id="grave-pager"></div>
         </section>
@@ -538,6 +546,32 @@
               <p class="block-desc">
                 5 小时剩余比最多的账号，比它低超过这个值（0.3 = 30 个百分点）的账号，本轮暂不分配。
               </p>
+            </div>
+
+            <div class="settings-section">
+              <div class="block-title">定时检查账号</div>
+              <p class="block-desc">
+                每天在设定的北京时间，自动逐个检查账号（免费账号会发一条最短对话，约消耗 1 条消息；账号间隔 8~20 秒）。可用来提前开启 5 小时窗口。默认关闭。
+              </p>
+              <div class="settings-grid">
+                <label class="field"
+                  >启用定时检查
+                  <select id="cfg-schedule_enabled" class="inp sel">
+                    <option value="false">否</option>
+                    <option value="true">是</option>
+                  </select>
+                </label>
+                <label class="field"
+                  >每天几点（北京时间）
+                  <input
+                    id="cfg-schedule_time"
+                    type="time"
+                    class="inp"
+                  />
+                </label>
+              </div>
+              <p id="schedule-estimate" class="block-desc"></p>
+              <p id="schedule-status" class="block-desc"></p>
             </div>
 
             <div class="settings-section">

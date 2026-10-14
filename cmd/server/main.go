@@ -17,5 +17,6 @@ func main() {
 	}
 	service.InstallQuotaBroadcast()
 	service.StartAccountStatusMonitor()
+	service.StartScheduler()
 	router.RunServer()
 }

@@ -195,3 +195,30 @@ if qi < 0 || ai < 0 || qi > ai {
 t.Fatalf("index.html 必须先引用 quota.js 再引用 app.js: quota=%d app=%d", qi, ai)
 }
 }
+// 定时刷新状态接口挂在 admin 组下，没有凭据必须 401。
+func TestScheduleStatusRequiresAdminAuth(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := NewMainEngine()
+	for _, auth := range []string{"", "Bearer wrong-password"} {
+		req := httptest.NewRequest(http.MethodGet, "/api/schedule/status", nil)
+		if auth != "" {
+			req.Header.Set("Authorization", auth)
+		}
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("auth=%q: code = %d, want 401", auth, w.Code)
+		}
+	}
+}
+
+// 乱葬岗每日统计接口必须有管理鉴权。
+func TestGraveyardDailyRequiresAdminAuth(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := NewMainEngine()
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/graveyard/daily?days=7", nil))
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("code = %d, want 401", w.Code)
+	}
+}

@@ -103,4 +103,48 @@ test("buildStats", () => {
   const empty = G.buildStats(doc, { total: 0 }).map(allText).join("#");
   assert.ok(empty.includes("平均寿命|—"));
 });
+
+
+// ---- 曲线图 ----
+test("chartPoints: 最大值为 0 时不除零，坐标有限", () => {
+  const pts = G.chartPoints([{ date: "2026-10-13", count: 0 }, { date: "2026-10-14", count: 0 }], 640, 220, { l: 32, r: 12, t: 12, b: 28 });
+  assert.strictEqual(pts.length, 2);
+  for (const p of pts) assert.ok(Number.isFinite(p.x) && Number.isFinite(p.y));
+});
+test("chartPoints: 最大值在顶部，零在底部，x 递增", () => {
+  const pad = { l: 32, r: 12, t: 12, b: 28 };
+  const pts = G.chartPoints([{ date: "a", count: 0 }, { date: "b", count: 4 }], 640, 220, pad);
+  assert.strictEqual(pts[1].y, pad.t);
+  assert.strictEqual(pts[0].y, 220 - pad.b);
+  assert.ok(pts[1].x > pts[0].x);
+});
+test("chartPoints: 只有一个点时居中", () => {
+  const pts = G.chartPoints([{ date: "a", count: 2 }], 640, 220, { l: 32, r: 12, t: 12, b: 28 });
+  assert.ok(Number.isFinite(pts[0].x));
+});
+test("buildChart: 全为 0 或空数据显示空状态", () => {
+  const doc = makeDoc();
+  for (const data of [[], null, [{ date: "a", count: 0 }]]) {
+    const box = G.buildChart(doc, data);
+    let text = "";
+    walk(box, (n) => { if (n.textContent) text += n.textContent; });
+    assert.ok(text.includes("这段时间没有账号阵亡"));
+  }
+});
+test("buildChart: 有数据时生成折线和带提示的点", () => {
+  const doc = makeDoc();
+  doc.createElementNS = (ns, tag) => {
+    const e = doc.createElement(tag);
+    e.attrs = {};
+    e.setAttribute = (k, v) => { e.attrs[k] = v; };
+    return e;
+  };
+  const box = G.buildChart(doc, [{ date: "2026-10-13", count: 1 }, { date: "2026-10-14", count: 3 }]);
+  const tags = [];
+  const titles = [];
+  walk(box, (n) => { tags.push(n.tag); if (n.tag === "title") titles.push(n.textContent); });
+  assert.ok(tags.includes("polyline"));
+  assert.strictEqual(tags.filter((t) => t === "circle").length, 2);
+  assert.ok(titles.includes("2026-10-14：3 个"));
+});
 console.log(`grave.test.js: ${passed} tests passed`);

@@ -31,6 +31,7 @@ func NewMainEngine() *gin.Engine {
 	admin.POST("/accounts/quota/refresh-all", handler.AdminRefreshAllQuota)
 	admin.POST("/accounts/check-all", handler.AdminCheckAllAccounts)
 	admin.GET("/events", handler.AdminEvents)
+	admin.GET("/schedule/status", handler.AdminScheduleStatus)
 	admin.GET("/config", handler.AdminGetConfig)
 	admin.POST("/config", handler.AdminUpdateConfig)
 	admin.POST("/delete", handler.AdminDeleteAccount)
@@ -46,6 +47,7 @@ func NewMainEngine() *gin.Engine {
 
 	admin.GET("/graveyard", handler.AdminGraveyard)
 	admin.GET("/graveyard/stats", handler.AdminGraveyardStats)
+	admin.GET("/graveyard/daily", handler.AdminGraveyardDaily)
 
 	pool := r.Group("/pool")
 	pool.Use(middleware.PoolAuth())

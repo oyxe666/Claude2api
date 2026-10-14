@@ -31,6 +31,8 @@ func AdminEvents(c *gin.Context) {
 
 	ch, cancel := service.SubscribeEvents()
 	defer cancel()
+	schCh, schCancel := service.SubscribeScheduleEvents()
+	defer schCancel()
 	if !write(": connected\n\n") {
 		return
 	}
@@ -44,6 +46,10 @@ func AdminEvents(c *gin.Context) {
 			return
 		case <-ticker.C:
 			if !write(": ping\n\n") {
+				return
+			}
+		case <-schCh:
+			if !write("event: schedule\ndata: {}\n\n") {
 				return
 			}
 		case msg := <-ch:
