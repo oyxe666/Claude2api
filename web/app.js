@@ -998,7 +998,10 @@ function switchPage(name) {
   if (name === "system") loadConfig();
   if (name === "keys") loadKeys();
   if (name === "logs") loadLogs();
-  if (name === "graveyard") loadGraveyard();
+  if (name === "graveyard") {
+    setGraveTab(PrefsUI.loadChoice(PrefsUI.safeStorage(window), GRAVE_TAB_KEY, ["overview", "grave"], "overview"));
+    loadGraveyard();
+  }
 }
 
 // ---------- 乱葬岗 ----------
@@ -1414,7 +1417,7 @@ document.querySelectorAll("[data-gdays]").forEach((b) => {
   b.addEventListener("click", () => {
     graveDays = Number(b.dataset.gdays) === 30 ? 30 : 7;
     document.querySelectorAll("[data-gdays]").forEach((x) => {
-      const on = x === b;
+      const on = Number(x.dataset.gdays) === graveDays;
       x.classList.toggle("active", on);
       x.setAttribute("aria-pressed", String(on));
     });
@@ -1556,6 +1559,23 @@ $("#quota-grid").addEventListener("click", (e) => {
 $(".seg").addEventListener("click", (e) => {
   const b = e.target.closest(".seg-btn");
   if (b) setQuotaView(b.dataset.view);
+});
+
+// 乱葬岗标签：概览 / 乱葬岗，上次选择记在 localStorage
+const GRAVE_TAB_KEY = "claude2api.graveTab";
+function setGraveTab(name) {
+  const tab = name === "grave" ? "grave" : "overview";
+  document.querySelectorAll(".tab-btn[data-gtab]").forEach((b) => {
+    const on = b.dataset.gtab === tab;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-selected", on ? "true" : "false");
+  });
+  $("#grave-tab-overview").classList.toggle("hidden", tab !== "overview");
+  $("#grave-tab-grave").classList.toggle("hidden", tab !== "grave");
+  PrefsUI.saveChoice(PrefsUI.safeStorage(window), GRAVE_TAB_KEY, tab);
+}
+document.querySelectorAll(".tab-btn[data-gtab]").forEach((b) => {
+  b.addEventListener("click", () => setGraveTab(b.dataset.gtab));
 });
 applyQuotaView();
 

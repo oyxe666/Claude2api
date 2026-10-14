@@ -90,8 +90,10 @@
     return el(doc, "div", "empty", "还没有账号阵亡");
   }
 
-  // 每日阵亡折线图：纯 SVG，用 createElementNS 构造，不拼 HTML。daily = [{date, count}]。
+  // 图表：纯 SVG，用 createElementNS 构造，不拼 HTML。
   const SVGNS = "http://www.w3.org/2000/svg";
+  const CHART_W = 640, CHART_H = 220;
+
   function chartPoints(daily, w, h, pad) {
     const n = daily.length;
     const max = Math.max(1, ...daily.map((d) => Number(d.count) || 0));
@@ -111,6 +113,40 @@
     return e;
   }
 
+  // 网格线 + 左侧刻度。values 为刻度数值数组（自上而下），纵坐标由 yOf 计算。
+  function drawGrid(doc, svg, pad, w, h, labels) {
+    const ih = h - pad.t - pad.b;
+    const n = 4;
+    for (let i = 0; i <= n; i++) {
+      const y = pad.t + (ih * i) / n;
+      svg.appendChild(svgEl(doc, "line", { x1: pad.l, y1: y.toFixed(1), x2: w - pad.r, y2: y.toFixed(1), class: "chart-grid" }));
+      const t = svgEl(doc, "text", { x: pad.l - 6, y: (y + 4).toFixed(1), "text-anchor": "end", class: "chart-label" });
+      t.textContent = labels[n - i];
+      svg.appendChild(t);
+    }
+  }
+
+  // 面积：折线点 + 底部两个角。
+  function areaPolygon(doc, pts, h, pad, cls) {
+    const base = (h - pad.b).toFixed(1);
+    const line = pts.map((p) => p.x.toFixed(1) + "," + p.y.toFixed(1));
+    const first = pts[0].x.toFixed(1), last = pts[pts.length - 1].x.toFixed(1);
+    return svgEl(doc, "polygon", { points: line.concat([last + "," + base, first + "," + base]).join(" "), class: cls });
+  }
+
+  // 横轴标签：7 天每点都标，30 天每隔 5 点标；首尾必标。
+  function drawDateLabels(doc, svg, pts, h, every) {
+    const last = pts.length - 1;
+    pts.forEach((p, i) => {
+      const isEdge = i === 0 || i === last;
+      if (!isEdge && i % every !== 0) return;
+      const anchor = i === 0 ? "start" : i === last ? "end" : "middle";
+      const l = svgEl(doc, "text", { x: p.x.toFixed(1), y: h - 8, "text-anchor": anchor, class: "chart-label" });
+      l.textContent = p.date.slice(5);
+      svg.appendChild(l);
+    });
+  }
+
   function buildChart(doc, daily) {
     const box = el(doc, "div", "grave-chart");
     const list = Array.isArray(daily) ? daily : [];
@@ -118,30 +154,23 @@
       box.appendChild(el(doc, "div", "empty", "这段时间没有账号阵亡"));
       return box;
     }
-    const w = 640, h = 220, pad = { l: 32, r: 12, t: 12, b: 28 };
+    const w = CHART_W, h = CHART_H, pad = { l: 32, r: 12, t: 12, b: 28 };
     const pts = chartPoints(list, w, h, pad);
     const max = Math.max(1, ...pts.map((p) => p.count));
+    const labels = [0, 1, 2, 3, 4].map((i) => String(Math.round((max * i) / 4)));
     const svg = svgEl(doc, "svg", { viewBox: `0 0 ${w} ${h}`, role: "img", "aria-label": "每日阵亡数折线图", class: "grave-chart-svg" });
+    drawGrid(doc, svg, pad, w, h, labels);
     svg.appendChild(svgEl(doc, "line", { x1: pad.l, y1: h - pad.b, x2: w - pad.r, y2: h - pad.b, class: "chart-axis" }));
-    const top = svgEl(doc, "text", { x: pad.l - 6, y: pad.t + 4, "text-anchor": "end", class: "chart-label" });
-    top.textContent = String(max);
-    svg.appendChild(top);
-    const zero = svgEl(doc, "text", { x: pad.l - 6, y: h - pad.b, "text-anchor": "end", class: "chart-label" });
-    zero.textContent = "0";
-    svg.appendChild(zero);
+    svg.appendChild(areaPolygon(doc, pts, h, pad, "chart-area"));
     svg.appendChild(svgEl(doc, "polyline", { points: pts.map((p) => p.x.toFixed(1) + "," + p.y.toFixed(1)).join(" "), class: "chart-line", fill: "none" }));
-    pts.forEach((p, i) => {
+    pts.forEach((p) => {
       const c = svgEl(doc, "circle", { cx: p.x.toFixed(1), cy: p.y.toFixed(1), r: 4, class: "chart-dot", tabindex: 0 });
       const t = svgEl(doc, "title", {});
       t.textContent = p.date + "：" + p.count + " 个";
       c.appendChild(t);
       svg.appendChild(c);
-      if (i === 0 || i === pts.length - 1) {
-        const l = svgEl(doc, "text", { x: p.x.toFixed(1), y: h - 8, "text-anchor": i === 0 ? "start" : "end", class: "chart-label" });
-        l.textContent = p.date.slice(5);
-        svg.appendChild(l);
-      }
     });
+    drawDateLabels(doc, svg, pts, h, pts.length > 14 ? 5 : 1);
     box.appendChild(svg);
     return box;
   }
@@ -184,16 +213,12 @@
       box.appendChild(el(doc, "div", "empty", "还没有足够的数据画存活曲线"));
       return box;
     }
-    const w = 640, h = 220, pad = { l: 40, r: 12, t: 12, b: 28 };
+    const w = CHART_W, h = CHART_H, pad = { l: 40, r: 12, t: 12, b: 28 };
     const pts = curvePoints(list, w, h, pad);
     const svg = svgEl(doc, "svg", { viewBox: `0 0 ${w} ${h}`, role: "img", "aria-label": "账号存活曲线", class: "grave-chart-svg" });
+    drawGrid(doc, svg, pad, w, h, ["0%", "25%", "50%", "75%", "100%"]);
     svg.appendChild(svgEl(doc, "line", { x1: pad.l, y1: h - pad.b, x2: w - pad.r, y2: h - pad.b, class: "chart-axis" }));
-    const top = svgEl(doc, "text", { x: pad.l - 6, y: pad.t + 4, "text-anchor": "end", class: "chart-label" });
-    top.textContent = "100%";
-    svg.appendChild(top);
-    const zero = svgEl(doc, "text", { x: pad.l - 6, y: h - pad.b, "text-anchor": "end", class: "chart-label" });
-    zero.textContent = "0";
-    svg.appendChild(zero);
+    svg.appendChild(areaPolygon(doc, pts, h, pad, "chart-area"));
     svg.appendChild(svgEl(doc, "polyline", { points: pts.map((p) => p.x.toFixed(1) + "," + p.y.toFixed(1)).join(" "), class: "chart-line", fill: "none" }));
     pts.forEach((p, i) => {
       const c = svgEl(doc, "circle", { cx: p.x.toFixed(1), cy: p.y.toFixed(1), r: 3, class: "chart-dot", tabindex: 0 });
@@ -234,34 +259,44 @@
       box.appendChild(el(doc, "div", "empty", "这段时间没有导入或阵亡"));
       return box;
     }
-    const w = 640, h = 220, pad = { l: 32, r: 12, t: 12, b: 28 };
+    const w = CHART_W, h = CHART_H, pad = { l: 32, r: 12, t: 12, b: 28 };
     const dp = dualPoints(list, w, h, pad);
+    const labels = [0, 1, 2, 3, 4].map((i) => String(Math.round((dp.max * i) / 4)));
     const svg = svgEl(doc, "svg", { viewBox: `0 0 ${w} ${h}`, role: "img", "aria-label": "每日导入与阵亡对比", class: "grave-chart-svg" });
+    drawGrid(doc, svg, pad, w, h, labels);
     svg.appendChild(svgEl(doc, "line", { x1: pad.l, y1: h - pad.b, x2: w - pad.r, y2: h - pad.b, class: "chart-axis" }));
-    const top = svgEl(doc, "text", { x: pad.l - 6, y: pad.t + 4, "text-anchor": "end", class: "chart-label" });
-    top.textContent = String(dp.max);
-    svg.appendChild(top);
-    const zero = svgEl(doc, "text", { x: pad.l - 6, y: h - pad.b, "text-anchor": "end", class: "chart-label" });
-    zero.textContent = "0";
-    svg.appendChild(zero);
-    [["imported", "chart-line", "导入"], ["died", "chart-line chart-line-dead", "阵亡"]].forEach(([k, cls, name]) => {
-      svg.appendChild(svgEl(doc, "polyline", { points: dp[k].map((p) => p.x.toFixed(1) + "," + p.y.toFixed(1)).join(" "), class: cls, fill: "none" }));
+    [
+      ["imported", "chart-area chart-area-imported", "chart-line chart-line-imported", "导入"],
+      ["died", "chart-area chart-area-dead", "chart-line chart-line-dead", "阵亡"],
+    ].forEach(([k, areaCls, lineCls, name]) => {
+      svg.appendChild(areaPolygon(doc, dp[k], h, pad, areaCls));
+      svg.appendChild(svgEl(doc, "polyline", { points: dp[k].map((p) => p.x.toFixed(1) + "," + p.y.toFixed(1)).join(" "), class: lineCls, fill: "none" }));
       dp[k].forEach((p) => {
-        const c = svgEl(doc, "circle", { cx: p.x.toFixed(1), cy: p.y.toFixed(1), r: 3, class: k === "died" ? "chart-dot chart-dot-dead" : "chart-dot", tabindex: 0 });
+        let c;
+        if (k === "died") {
+          c = svgEl(doc, "rect", { x: (p.x - 3.5).toFixed(1), y: (p.y - 3.5).toFixed(1), width: 7, height: 7, class: "chart-dot chart-dot-dead", tabindex: 0 });
+        } else {
+          c = svgEl(doc, "circle", { cx: p.x.toFixed(1), cy: p.y.toFixed(1), r: 3, class: "chart-dot chart-dot-imported", tabindex: 0 });
+        }
         const t = svgEl(doc, "title", {});
         t.textContent = p.date + "：" + name + " " + p.v + " 个";
         c.appendChild(t);
         svg.appendChild(c);
       });
     });
-    const first = dp.imported[0], last = dp.imported[dp.imported.length - 1];
-    const l1 = svgEl(doc, "text", { x: first.x.toFixed(1), y: h - 8, "text-anchor": "start", class: "chart-label" });
-    l1.textContent = first.date.slice(5);
-    svg.appendChild(l1);
-    const l2 = svgEl(doc, "text", { x: last.x.toFixed(1), y: h - 8, "text-anchor": "end", class: "chart-label" });
-    l2.textContent = last.date.slice(5);
-    svg.appendChild(l2);
+    drawDateLabels(doc, svg, dp.imported, h, list.length > 14 ? 5 : 1);
     box.appendChild(svg);
+
+    const legend = el(doc, "div", "chart-legend");
+    const lgImp = el(doc, "span");
+    lgImp.appendChild(el(doc, "i"));
+    lgImp.appendChild(doc.createTextNode("导入"));
+    const lgDead = el(doc, "span", "lg-dead");
+    lgDead.appendChild(el(doc, "i"));
+    lgDead.appendChild(doc.createTextNode("阵亡"));
+    legend.appendChild(lgImp);
+    legend.appendChild(lgDead);
+    box.appendChild(legend);
     return box;
   }
 

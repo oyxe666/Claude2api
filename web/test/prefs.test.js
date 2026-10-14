@@ -70,4 +70,25 @@ test("safeStorage: getter 抛错返回 null", () => {
   assert.strictEqual(P.safeStorage({ localStorage: s }), s);
   assert.strictEqual(P.safeStorage({}), null);
 });
+test("loadChoice: 合法值被读回", () => {
+  assert.strictEqual(P.loadChoice(mem({ k: "grave" }), "k", ["overview", "grave"], "overview"), "grave");
+  assert.strictEqual(P.loadChoice(mem({ k: "overview" }), "k", ["overview", "grave"], "overview"), "overview");
+});
+test("loadChoice: 非法值 / 空值用默认", () => {
+  for (const v of ["bogus", "", "Grave", " grave", "__proto__"]) {
+    assert.strictEqual(P.loadChoice(mem({ k: v }), "k", ["overview", "grave"], "overview"), "overview", v);
+  }
+  assert.strictEqual(P.loadChoice(mem(), "k", ["overview", "grave"], "overview"), "overview");
+});
+test("loadChoice: getItem 抛错 / storage 为 null 用默认", () => {
+  assert.strictEqual(P.loadChoice(throwing, "k", ["overview", "grave"], "overview"), "overview");
+  assert.strictEqual(P.loadChoice(null, "k", ["overview", "grave"], "overview"), "overview");
+});
+test("saveChoice: 成功与失败", () => {
+  const s = mem();
+  assert.strictEqual(P.saveChoice(s, "k", "grave"), true);
+  assert.strictEqual(s.d.k, "grave");
+  assert.strictEqual(P.saveChoice(throwing, "k", "grave"), false);
+  assert.strictEqual(P.saveChoice(null, "k", "grave"), false);
+});
 console.log(`prefs.test.js: ${passed} tests passed`);

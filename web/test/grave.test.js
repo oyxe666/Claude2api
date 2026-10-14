@@ -23,7 +23,7 @@ function makeDoc() {
       return c;
     },
   });
-  return { createElement: mk };
+  return { createElement: mk, createTextNode: (t) => ({ tag: "#text", textContent: t, children: [], appendChild(c) { this.children.push(c); return c; } }) };
 }
 function walk(n, fn) {
   fn(n);
@@ -131,21 +131,22 @@ test("buildChart: 全为 0 或空数据显示空状态", () => {
     assert.ok(text.includes("这段时间没有账号阵亡"));
   }
 });
-test("buildChart: 有数据时生成折线和带提示的点", () => {
-  const doc = makeDoc();
-  doc.createElementNS = (ns, tag) => {
-    const e = doc.createElement(tag);
-    e.attrs = {};
-    e.setAttribute = (k, v) => { e.attrs[k] = v; };
-    return e;
-  };
+test("buildChart: 有数据时生成网格、面积、折线和带提示的点", () => {
+  const doc = svgDoc();
   const box = G.buildChart(doc, [{ date: "2026-10-13", count: 1 }, { date: "2026-10-14", count: 3 }]);
   const tags = [];
   const titles = [];
-  walk(box, (n) => { tags.push(n.tag); if (n.tag === "title") titles.push(n.textContent); });
+  const classes = [];
+  walk(box, (n) => {
+    tags.push(n.tag);
+    if (n.tag === "title") titles.push(n.textContent);
+    if (n.attrs && n.attrs.class) classes.push(n.tag + "." + n.attrs.class);
+  });
   assert.ok(tags.includes("polyline"));
   assert.strictEqual(tags.filter((t) => t === "circle").length, 2);
   assert.ok(titles.includes("2026-10-14：3 个"));
+  assert.ok(classes.includes("line.chart-grid"));
+  assert.ok(classes.includes("polygon.chart-area"));
 });
 // ---- 存活统计 ----
 function svgDoc() {
@@ -176,7 +177,7 @@ test("curvePoints: 1 在顶部，0 在底部，单点居中，坐标有限", () 
   const bad = G.curvePoints([{ day: 0, survival: NaN }], 640, 220, pad);
   assert.ok(Number.isFinite(bad[0].y));
 });
-test("buildSurvivalCurve: 空数据显示空状态；有数据生成折线和提示", () => {
+test("buildSurvivalCurve: 空数据显示空状态；有数据生成网格、面积、折线和提示", () => {
   for (const data of [[], null]) {
     const box = G.buildSurvivalCurve(makeDoc(), data);
     assert.ok(allText(box).includes("还没有足够的数据"));
@@ -184,9 +185,16 @@ test("buildSurvivalCurve: 空数据显示空状态；有数据生成折线和提
   const box = G.buildSurvivalCurve(svgDoc(), [{ day: 0, survival: 1 }, { day: 1, survival: 0.5 }]);
   const tags = [];
   const titles = [];
-  walk(box, (n) => { tags.push(n.tag); if (n.tag === "title") titles.push(n.textContent); });
+  const classes = [];
+  walk(box, (n) => {
+    tags.push(n.tag);
+    if (n.tag === "title") titles.push(n.textContent);
+    if (n.attrs && n.attrs.class) classes.push(n.tag + "." + n.attrs.class);
+  });
   assert.ok(tags.includes("polyline"));
   assert.ok(titles.includes("第 1 天：50% 存活"));
+  assert.ok(classes.includes("line.chart-grid"));
+  assert.ok(classes.includes("polygon.chart-area"));
 });
 test("dualPoints: 最大值为 0 时不除零；共用同一纵轴", () => {
   const pad = { l: 32, r: 12, t: 12, b: 28 };
@@ -197,17 +205,27 @@ test("dualPoints: 最大值为 0 时不除零；共用同一纵轴", () => {
   assert.strictEqual(d.imported[0].y, pad.t);
   assert.strictEqual(d.died[1].y, pad.t);
 });
-test("buildDualChart: 空数据空状态；有数据两条线、带提示的点", () => {
+test("buildDualChart: 空数据空状态；有数据两条线、圆点与方块、图例", () => {
   for (const data of [[], null, [{ date: "a", imported: 0, died: 0 }]]) {
     assert.ok(allText(G.buildDualChart(makeDoc(), data)).includes("这段时间没有导入或阵亡"));
   }
   const box = G.buildDualChart(svgDoc(), [{ date: "2026-10-13", imported: 2, died: 0 }, { date: "2026-10-14", imported: 1, died: 3 }]);
   const tags = [];
   const titles = [];
-  walk(box, (n) => { tags.push(n.tag); if (n.tag === "title") titles.push(n.textContent); });
+  const classes = [];
+  walk(box, (n) => {
+    tags.push(n.tag);
+    if (n.tag === "title") titles.push(n.textContent);
+    if (n.attrs && n.attrs.class) classes.push(n.tag + "." + n.attrs.class);
+    if (n.className) classes.push("div." + n.className);
+  });
   assert.strictEqual(tags.filter((t) => t === "polyline").length, 2);
-  assert.strictEqual(tags.filter((t) => t === "circle").length, 4);
+  assert.strictEqual(tags.filter((t) => t === "circle").length, 2);
+  assert.strictEqual(tags.filter((t) => t === "rect").length, 2);
   assert.ok(titles.includes("2026-10-14：阵亡 3 个"));
   assert.ok(titles.includes("2026-10-13：导入 2 个"));
+  assert.ok(classes.includes("line.chart-grid"));
+  assert.ok(classes.includes("polygon.chart-area-imported") || classes.includes("polygon.chart-area chart-area-imported"));
+  assert.ok(classes.includes("div.chart-legend"));
 });
 console.log(`grave.test.js: ${passed} tests passed`);

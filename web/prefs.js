@@ -48,7 +48,30 @@
     }
   }
 
-  const api = { optionValues, loadPageSize, savePageSize, safeStorage };
+  // 读取字符串选项；不在 allowed 内、读取失败或没有 storage 时返回默认值。
+  function loadChoice(storage, key, allowed, def) {
+    try {
+      if (!storage) return def;
+      const v = storage.getItem(key);
+      if (typeof v !== "string") return def;
+      return allowed.includes(v) ? v : def;
+    } catch (e) {
+      return def;
+    }
+  }
+
+  // 保存字符串选项；失败返回 false，不抛错。
+  function saveChoice(storage, key, value) {
+    try {
+      if (!storage) return false;
+      storage.setItem(key, String(value));
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  const api = { optionValues, loadPageSize, savePageSize, safeStorage, loadChoice, saveChoice };
   root.PrefsUI = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);

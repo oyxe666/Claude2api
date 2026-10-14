@@ -2407,17 +2407,49 @@ body[data-page="login"] .err {
   .msg { opacity: 1; transform: translate(-50%, 0); }
 }
 
+/* 乱葬岗标签 */
+.tabs { display: inline-flex; gap: 4px; }
+.tab-btn {
+  padding: 6px 14px;
+  border: 1px solid transparent;
+  border-bottom: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+.tab-btn:hover { color: var(--fg); background: var(--hover); }
+.tab-btn.active {
+  color: var(--fg);
+  background: var(--hover);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+.tab-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.seg-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
 /* 乱葬岗曲线图 */
-.grave-chart-wrap { margin: 0 0 16px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg); }
+.grave-chart-wrap { --c-blue: #2f6fdb; --c-red: #d8393f; margin: 0 0 16px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg); }
+@media (prefers-color-scheme: dark) { .grave-chart-wrap { --c-blue: #6aa2ff; --c-red: #ff7b7f; } }
 .grave-chart-wrap .seg { margin-bottom: 8px; }
 .grave-chart-svg { width: 100%; height: auto; max-height: 240px; display: block; }
 .chart-axis { stroke: var(--border-strong); stroke-width: 1; }
+.chart-grid { stroke: var(--border); stroke-width: 1; stroke-dasharray: 3 4; }
 .chart-label { fill: var(--muted); font-size: 11px; }
-.chart-line { stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart-line { stroke: var(--accent); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.chart-area { fill: var(--accent); opacity: 0.12; stroke: none; }
 .chart-dot { fill: var(--accent); stroke: var(--bg); stroke-width: 2; transition: r .15s ease; }
 .chart-dot:hover, .chart-dot:focus-visible { r: 6; outline: none; }
 @media (prefers-reduced-motion: reduce) { .chart-dot { transition: none; } }
-.chart-line-dead { stroke: #e5484d; }
-.chart-dot-dead { fill: #e5484d; }
+.chart-line-imported { stroke: var(--c-blue); }
+.chart-area-imported { fill: var(--c-blue); }
+.chart-dot-imported { fill: var(--c-blue); }
+.chart-line-dead { stroke: var(--c-red); }
+.chart-area-dead { fill: var(--c-red); }
+.chart-dot-dead { fill: var(--c-red); }
+.chart-legend { display: flex; gap: 14px; margin: 4px 0 0; font-size: 12px; color: var(--muted); }
+.chart-legend i { display: inline-block; width: 10px; height: 10px; margin-right: 5px; border-radius: 50%; background: var(--c-blue); }
+.chart-legend .lg-dead i { background: var(--c-red); border-radius: 2px; }
 .grave-chart-wrap .block-title { margin: 12px 0 6px; font-size: 14px; }
 .grave-chart-wrap .stats { margin: 8px 0; }
