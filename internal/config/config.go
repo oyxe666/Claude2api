@@ -31,6 +31,63 @@ type Settings struct {
 	// ScheduleEnabled 定时检查账号开关（默认关）；ScheduleTime 为北京时间 "HH:MM"，非法时回退 "06:00"。
 	ScheduleEnabled bool   `json:"schedule_enabled" yaml:"schedule_enabled"`
 	ScheduleTime    string `json:"schedule_time" yaml:"schedule_time"`
+	// ModelPrices 模型单价表（美元 / 百万 token），仅用于用量统计页的费用折算，订阅账号实际不按此计费。
+	ModelPrices map[string]ModelPrice `json:"model_prices" yaml:"model_prices"`
+}
+
+// ModelPrice 是某个模型每百万 token 的输入 / 输出价格（美元）。
+type ModelPrice struct {
+	Input  float64 `json:"input" yaml:"input"`
+	Output float64 `json:"output" yaml:"output"`
+}
+
+// DefaultModelPrices 返回 Anthropic 官方 API 默认价格（2026-10 核对，haiku-5-5 取提示词不超过 10 万 token 的价格）。
+func DefaultModelPrices() map[string]ModelPrice {
+	return map[string]ModelPrice{
+		"claude-sonnet-5-5":          {Input: 2, Output: 10},
+		"claude-sonnet-5":            {Input: 2, Output: 10},
+		"claude-sonnet-4-6":          {Input: 3, Output: 15},
+		"claude-haiku-5-5":           {Input: 0.10, Output: 0.50},
+		"claude-haiku-4-5-20251001":  {Input: 1, Output: 5},
+	}
+}
+
+// cleanPrices 丢弃空模型名和非法（负数 / NaN / Inf）价格。
+func cleanPrices(in map[string]ModelPrice) map[string]ModelPrice {
+	out := map[string]ModelPrice{}
+	for k, v := range in {
+		k = strings.TrimSpace(k)
+		bad := func(f float64) bool { return math.IsNaN(f) || math.IsInf(f, 0) || f < 0 }
+		if k == "" || bad(v.Input) || bad(v.Output) {
+			continue
+		}
+		out[k] = v
+	}
+	return out
+}
+
+// parsePrices 把前端传来的 {模型: {input, output}} 解析成单价表；格式不对返回 false（调用方保持原值）。
+func parsePrices(v any) (map[string]ModelPrice, bool) {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	num := func(x any) float64 {
+		f, err := strconv.ParseFloat(strings.TrimSpace(fmt.Sprint(x)), 64)
+		if err != nil {
+			return math.NaN()
+		}
+		return f
+	}
+	raw := map[string]ModelPrice{}
+	for k, e := range m {
+		em, ok := e.(map[string]any)
+		if !ok {
+			continue
+		}
+		raw[k] = ModelPrice{Input: num(em["input"]), Output: num(em["output"])}
+	}
+	return cleanPrices(raw), true
 }
 
 var (
@@ -80,6 +137,11 @@ func Load() {
 	}
 	current.QuotaBalanceGap = clampGap(current.QuotaBalanceGap)
 	current.ScheduleTime = NormalizeScheduleTime(current.ScheduleTime)
+	if len(current.ModelPrices) == 0 {
+		current.ModelPrices = DefaultModelPrices()
+	} else {
+		current.ModelPrices = cleanPrices(current.ModelPrices)
+	}
 }
 
 // clampGap 把均衡阈值夹到 [0,1]；NaN 视为 0（关闭）。
@@ -190,6 +252,14 @@ func Update(patch map[string]any) Settings {
 		case "schedule_time":
 			// 非法格式回退默认值，避免定时任务悄悄失效。
 			current.ScheduleTime = NormalizeScheduleTime(fmt.Sprint(v))
+		case "model_prices":
+			// 格式不对保持原值；用户把表清空则恢复官方默认价。
+			if p, ok := parsePrices(v); ok {
+				if len(p) == 0 {
+					p = DefaultModelPrices()
+				}
+				current.ModelPrices = p
+			}
 		}
 	}
 	writeConfig()

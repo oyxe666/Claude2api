@@ -51,6 +51,7 @@
           <button class="nav-item" data-page="chat">对话测试</button>
           <button class="nav-item" data-page="logs">调用日志</button>
           <button class="nav-item" data-page="graveyard">账号存活</button>
+          <button class="nav-item" data-page="usage">用量统计</button>
           <button class="nav-item" data-page="system">系统管理</button>
         </nav>
         <div class="nav-foot">
@@ -503,6 +504,47 @@
           </header>
           <div id="log-detail-body"></div>
         </section>
+        <section class="page hidden" id="page-usage">
+          <header class="page-head">
+            <div>
+              <h2>用量统计</h2>
+              <p class="block-desc">只读本地调用日志，不会向 Claude 发请求。token 为本地估算值，费用按 API 价格折算，仅供参考，订阅账号实际不花这笔钱。</p>
+            </div>
+          </header>
+
+          <div class="toolbar">
+            <div class="seg" role="group" aria-label="用量范围">
+              <button type="button" class="seg-btn active" data-udays="7" aria-pressed="true">近 7 天</button>
+              <button type="button" class="seg-btn" data-udays="30" aria-pressed="false">近 30 天</button>
+            </div>
+            <button id="btn-usage-refresh" class="btn" title="只读本地数据，不会向 Claude 发请求">刷新（本地）</button>
+          </div>
+
+          <div class="grave-chart-wrap">
+            <div class="stats" id="usage-summary"></div>
+            <h4 class="block-title">每日 token 用量</h4>
+            <div id="usage-chart-box"></div>
+          </div>
+
+          <div class="table-area">
+            <table class="acc-table usage-table">
+              <thead>
+                <tr>
+                  <th>模型</th>
+                  <th>调用</th>
+                  <th>成功率</th>
+                  <th>输入 token</th>
+                  <th>输出 token</th>
+                  <th>占比</th>
+                  <th>折算费用（美元）</th>
+                </tr>
+              </thead>
+              <tbody id="usage-body">
+                <tr><td colspan="7" class="empty">加载中…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
         <section class="page hidden" id="page-system">
           <header class="page-head">
             <h2>系统管理</h2>
@@ -595,6 +637,15 @@
               </div>
               <p id="schedule-estimate" class="block-desc"></p>
               <p id="schedule-status" class="block-desc"></p>
+            </div>
+
+            <div class="settings-section">
+              <div class="block-title">模型单价表</div>
+              <p class="block-desc">
+                美元 / 百万 token，仅用于「用量统计」页的费用折算，订阅账号实际不按此计费。默认是官方 API 价格，清空全部行并保存会恢复默认。
+              </p>
+              <div id="price-rows" class="price-rows"></div>
+              <button type="button" id="btn-price-add" class="btn">添加模型</button>
             </div>
 
             <div class="settings-section">

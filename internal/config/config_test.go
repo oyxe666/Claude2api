@@ -58,3 +58,27 @@ func TestSettingsJSONHasQuotaBalanceGap(t *testing.T) {
 		t.Fatalf("JSON 缺少 quota_balance_gap: %s", b)
 	}
 }
+
+func TestModelPrices(t *testing.T) {
+	saveCurrent(t)
+	Update(map[string]any{"model_prices": map[string]any{
+		"m1":  map[string]any{"input": "1.5", "output": 7.5},
+		"bad": map[string]any{"input": "-1", "output": 2},
+		"nan": map[string]any{"input": "abc", "output": 2},
+		" ":   map[string]any{"input": 1, "output": 2},
+	}})
+	got := Get().ModelPrices
+	if len(got) != 1 || got["m1"].Input != 1.5 || got["m1"].Output != 7.5 {
+		t.Fatalf("非法项应被丢弃: %+v", got)
+	}
+	// 格式不对保持原值
+	Update(map[string]any{"model_prices": "oops"})
+	if len(Get().ModelPrices) != 1 {
+		t.Fatalf("非法格式应保持原值: %+v", Get().ModelPrices)
+	}
+	// 清空恢复默认
+	Update(map[string]any{"model_prices": map[string]any{}})
+	if p := Get().ModelPrices["claude-sonnet-5-5"]; p.Input != 2 || p.Output != 10 {
+		t.Fatalf("清空应恢复官方默认价: %+v", Get().ModelPrices)
+	}
+}

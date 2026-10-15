@@ -2413,6 +2413,11 @@ body[data-page="login"] .err {
 .grave-chart-wrap .stats { margin: 8px 0; }
 
 
+/* ===== 用量统计 / 单价表 ===== */
+.price-rows { display: grid; gap: 8px; margin-bottom: 10px; }
+.price-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.usage-table th, .usage-table td { white-space: nowrap; }
+
 /* ===== MOBILE v2 ===== */
 @media (max-width: 720px) {
   /* --- 2. 顶栏：品牌+退出一行，菜单横向滑动标签条，吸顶，适配安全区 --- */
@@ -2706,4 +2711,16 @@ body[data-page="login"] .err {
   .nav-logout { white-space: nowrap; }
   .nav { min-width: 0; }
   .nav-item { border-left: 0; }
+
+  /* --- 7b/8. 单价表 / 用量表（手机） --- */
+  .price-row { grid-template-columns: 1fr 1fr; }
+  .price-row .price-model { grid-column: 1 / -1; }
+  .price-row .price-del { grid-column: 1 / -1; min-height: 40px; }
+  #price-rows + .btn { width: 100%; }
+  .usage-table, .usage-table tbody, .usage-table tr, .usage-table td { display: block; width: 100%; }
+  .usage-table thead { display: none; }
+  .usage-table tr { margin-bottom: 12px; padding: 10px 14px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: #fcfbf7; }
+  .usage-table td[data-label] { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px dashed var(--border); text-align: right; white-space: normal; }
+  .usage-table td[data-label]::before { content: attr(data-label); flex: none; color: var(--muted); font-size: 12px; text-align: left; }
+  .usage-table td.empty { display: block; text-align: center; }
 }

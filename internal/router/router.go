@@ -50,6 +50,8 @@ func NewMainEngine() *gin.Engine {
 	admin.GET("/graveyard/daily", handler.AdminGraveyardDaily)
 	admin.GET("/graveyard/survival", handler.AdminGraveyardSurvival)
 
+	admin.GET("/usage", handler.AdminUsage)
+
 	pool := r.Group("/pool")
 	pool.Use(middleware.PoolAuth())
 	pool.GET("/api/list", handler.PoolList)

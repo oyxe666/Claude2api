@@ -756,6 +756,7 @@ async function loadConfig() {
       if (!el) continue;
       el.value = String(c[k] ?? CONFIG_DEFAULTS[k] ?? "");
     }
+    renderPriceRows(c.model_prices || {});
     updateScheduleEstimate();
     loadScheduleStatus();
   } catch (e) {
@@ -815,6 +816,7 @@ async function saveConfig() {
     const el = $("#cfg-" + k);
     if (el) patch[k] = el.value;
   }
+  patch.model_prices = collectPriceRows();
   const btn = $("#btn-cfg-save");
   btn.disabled = true;
   try {
@@ -997,6 +999,7 @@ function switchPage(name) {
   if (name === "accounts") loadAccountModels();
   if (name === "system") loadConfig();
   if (name === "keys") loadKeys();
+  if (name === "usage") loadUsage();
   if (name === "logs") loadLogs();
   if (name === "graveyard") {
     setGraveTab(PrefsUI.loadChoice(PrefsUI.safeStorage(window), GRAVE_TAB_KEY, ["overview", "grave"], "overview"));
@@ -1055,6 +1058,100 @@ async function loadSurvival() {
     sum.textContent = "";
     curve.textContent = "";
     daily.textContent = "";
+  }
+}
+
+// ---------- 模型单价表（设置页） ----------
+function priceRowHTML(model, p) {
+  return `<div class="price-row">
+    <input class="inp price-model" type="text" placeholder="模型名" value="${esc(model)}" />
+    <input class="inp price-in" type="number" min="0" step="0.01" placeholder="输入价" value="${esc(p.input ?? "")}" />
+    <input class="inp price-out" type="number" min="0" step="0.01" placeholder="输出价" value="${esc(p.output ?? "")}" />
+    <button type="button" class="btn-sm btn-danger price-del">删除</button>
+  </div>`;
+}
+
+function renderPriceRows(prices) {
+  const box = $("#price-rows");
+  if (!box) return;
+  box.innerHTML = Object.keys(prices)
+    .sort()
+    .map((k) => priceRowHTML(k, prices[k]))
+    .join("");
+}
+
+function collectPriceRows() {
+  const out = {};
+  document.querySelectorAll("#price-rows .price-row").forEach((r) => {
+    const m = r.querySelector(".price-model").value.trim();
+    if (!m) return;
+    out[m] = { input: r.querySelector(".price-in").value, output: r.querySelector(".price-out").value };
+  });
+  return out;
+}
+
+// ---------- 用量统计 ----------
+let usageDays = 7;
+
+function usageCost(m, prices) {
+  const p = prices && prices[m.model];
+  if (!p) return null;
+  return ((m.input_tokens || 0) / 1e6) * (p.input || 0) + ((m.output_tokens || 0) / 1e6) * (p.output || 0);
+}
+
+async function loadUsage() {
+  const sum = $("#usage-summary");
+  const chart = $("#usage-chart-box");
+  const body = $("#usage-body");
+  if (!sum || !chart || !body) return;
+  try {
+    const d = await api(`/api/usage?days=${usageDays}`);
+    const daily = d.daily || [];
+    const models = d.models || [];
+    const prices = d.prices || {};
+    let inT = 0, outT = 0, calls = 0, ok = 0, cost = 0, unpriced = false;
+    daily.forEach((x) => {
+      inT += x.input_tokens || 0;
+      outT += x.output_tokens || 0;
+      calls += x.calls || 0;
+      ok += x.success || 0;
+    });
+    models.forEach((m) => {
+      const c = usageCost(m, prices);
+      if (c === null) unpriced = true;
+      else cost += c;
+    });
+    const item = (label, value) => `<span><small>${label}</small><b>${esc(value)}</b></span>`;
+    sum.innerHTML =
+      item("调用", String(calls)) +
+      item("成功率", calls ? Math.round((ok / calls) * 100) + "%" : "—") +
+      item("输入", GraveUI.fmtTokens(inT)) +
+      item("输出", GraveUI.fmtTokens(outT)) +
+      item("折算费用", "$" + cost.toFixed(2) + (unpriced ? "+" : ""));
+    chart.textContent = "";
+    chart.appendChild(GraveUI.buildUsageChart(document, daily));
+    const total = inT + outT;
+    if (!models.length) {
+      body.innerHTML = `<tr><td colspan="7" class="empty">这段时间没有调用记录</td></tr>`;
+      return;
+    }
+    body.innerHTML = models
+      .map((m) => {
+        const c = usageCost(m, prices);
+        const t = (m.input_tokens || 0) + (m.output_tokens || 0);
+        return `<tr>
+        <td class="mono" data-label="模型">${esc(m.model || "—")}</td>
+        <td data-label="调用">${m.calls}</td>
+        <td data-label="成功率">${m.calls ? Math.round((m.success / m.calls) * 100) + "%" : "—"}</td>
+        <td data-label="输入 token">${GraveUI.fmtTokens(m.input_tokens)}</td>
+        <td data-label="输出 token">${GraveUI.fmtTokens(m.output_tokens)}</td>
+        <td data-label="占比">${total ? Math.round((t / total) * 100) + "%" : "—"}</td>
+        <td data-label="折算费用">${c === null ? "—（未设单价）" : "$" + c.toFixed(3)}</td>
+      </tr>`;
+      })
+      .join("");
+  } catch (e) {
+    showMsg("加载用量失败: " + e.message, "err");
   }
 }
 
@@ -1424,6 +1521,25 @@ document.querySelectorAll("[data-gdays]").forEach((b) => {
     loadGraveChart();
     loadSurvival();
   });
+});
+document.querySelectorAll("[data-udays]").forEach((b) => {
+  b.addEventListener("click", () => {
+    usageDays = Number(b.dataset.udays) === 30 ? 30 : 7;
+    document.querySelectorAll("[data-udays]").forEach((x) => {
+      const on = Number(x.dataset.udays) === usageDays;
+      x.classList.toggle("active", on);
+      x.setAttribute("aria-pressed", String(on));
+    });
+    loadUsage();
+  });
+});
+$("#btn-usage-refresh").addEventListener("click", loadUsage);
+$("#btn-price-add").addEventListener("click", () => {
+  $("#price-rows").insertAdjacentHTML("beforeend", priceRowHTML("", {}));
+});
+$("#price-rows").addEventListener("click", (e) => {
+  const b = e.target.closest(".price-del");
+  if (b) b.closest(".price-row").remove();
 });
 $("#btn-grave-refresh").addEventListener("click", () => {
   gravePage = 1;

@@ -300,7 +300,71 @@
     return box;
   }
 
-  const api = { reasonLabel, fmtLifespan, quotaText, epitaph, buildStats, buildTomb, buildEmpty, buildChart, chartPoints, buildSurvivalSummary, curvePoints, buildSurvivalCurve, dualPoints, buildDualChart };
+  // ---- 用量统计：每日输入 / 输出 token 双线图（token 为本地估算） ----
+  function fmtTokens(n) {
+    const v = Number(n) || 0;
+    if (v >= 1e6) return (v / 1e6).toFixed(2) + "M";
+    if (v >= 1e3) return (v / 1e3).toFixed(1) + "K";
+    return String(Math.round(v));
+  }
+
+  function usagePoints(daily, w, h, pad) {
+    const n = daily.length;
+    const max = Math.max(1, ...daily.map((d) => Math.max(Number(d.input_tokens) || 0, Number(d.output_tokens) || 0)));
+    const iw = w - pad.l - pad.r;
+    const ih = h - pad.t - pad.b;
+    const mk = (key) => daily.map((d, i) => ({
+      date: d.date,
+      v: Number(d[key]) || 0,
+      x: pad.l + (n <= 1 ? iw / 2 : (iw * i) / (n - 1)),
+      y: pad.t + ih - (ih * (Number(d[key]) || 0)) / max,
+    }));
+    return { max, input: mk("input_tokens"), output: mk("output_tokens") };
+  }
+
+  function buildUsageChart(doc, daily) {
+    const box = el(doc, "div", "grave-chart");
+    const list = Array.isArray(daily) ? daily : [];
+    if (!list.some((d) => Number(d.input_tokens) > 0 || Number(d.output_tokens) > 0)) {
+      box.appendChild(el(doc, "div", "empty", "这段时间没有调用记录"));
+      return box;
+    }
+    const w = CHART_W, h = CHART_H, pad = { l: 44, r: 12, t: 12, b: 28 };
+    const up = usagePoints(list, w, h, pad);
+    const labels = [0, 1, 2, 3, 4].map((i) => fmtTokens((up.max * i) / 4));
+    const svg = svgEl(doc, "svg", { viewBox: `0 0 ${w} ${h}`, role: "img", "aria-label": "每日 token 用量折线图", class: "grave-chart-svg" });
+    drawGrid(doc, svg, pad, w, h, labels);
+    svg.appendChild(svgEl(doc, "line", { x1: pad.l, y1: h - pad.b, x2: w - pad.r, y2: h - pad.b, class: "chart-axis" }));
+    [
+      ["input", "chart-area chart-area-imported", "chart-line chart-line-imported", "输入"],
+      ["output", "chart-area chart-area-dead", "chart-line chart-line-dead", "输出"],
+    ].forEach(([k, areaCls, lineCls, name]) => {
+      svg.appendChild(areaPolygon(doc, up[k], h, pad, areaCls));
+      svg.appendChild(svgEl(doc, "polyline", { points: up[k].map((p) => p.x.toFixed(1) + "," + p.y.toFixed(1)).join(" "), class: lineCls, fill: "none" }));
+      up[k].forEach((p) => {
+        const c = svgEl(doc, "circle", { cx: p.x.toFixed(1), cy: p.y.toFixed(1), r: 3, class: k === "input" ? "chart-dot chart-dot-imported" : "chart-dot chart-dot-dead", tabindex: 0 });
+        const t = svgEl(doc, "title", {});
+        t.textContent = p.date + "：" + name + " " + fmtTokens(p.v) + " token";
+        c.appendChild(t);
+        svg.appendChild(c);
+      });
+    });
+    drawDateLabels(doc, svg, up.input, h, list.length > 14 ? 5 : 1);
+    box.appendChild(svg);
+    const legend = el(doc, "div", "chart-legend");
+    const a = el(doc, "span");
+    a.appendChild(el(doc, "i"));
+    a.appendChild(doc.createTextNode("输入 token"));
+    const b = el(doc, "span", "lg-dead");
+    b.appendChild(el(doc, "i"));
+    b.appendChild(doc.createTextNode("输出 token"));
+    legend.appendChild(a);
+    legend.appendChild(b);
+    box.appendChild(legend);
+    return box;
+  }
+
+  const api = { reasonLabel, fmtLifespan, quotaText, epitaph, buildStats, buildTomb, buildEmpty, buildChart, chartPoints, buildSurvivalSummary, curvePoints, buildSurvivalCurve, dualPoints, buildDualChart, fmtTokens, usagePoints, buildUsageChart };
   root.GraveUI = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);
