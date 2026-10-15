@@ -1321,7 +1321,7 @@ body {
     12px/1.6 ui-monospace,
     monospace;
 }
-@media (max-width: 760px) {
+@media (max-width: 720px) {
   .api-docs {
     grid-template-columns: 1fr;
   }
@@ -1562,11 +1562,7 @@ body {
   color: #fff;
   cursor: pointer;
 }
-@media (max-width: 700px) {
-  #page-chat {
-    height: auto;
-    min-height: 500px;
-  }
+@media (max-width: 720px) {
   .chat-messages {
     min-height: 360px;
     padding: 14px 0 18px;
@@ -1664,46 +1660,8 @@ code {
 }
 
 @media (max-width: 720px) {
-  .app {
-    flex-direction: column;
-  }
-  .sidebar {
-    width: auto;
-    height: auto;
-    position: static;
-    flex-direction: row;
-    align-items: center;
-    gap: 14px;
-    padding: 14px 16px;
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-  }
-  .nav {
-    flex-direction: row;
-    margin-top: 0;
-    flex: 1;
-  }
-  .nav-item {
-    border-left: none;
-    border-bottom: 2px solid transparent;
-  }
-  .nav-item.active {
-    border-left: none;
-    border-bottom-color: var(--accent);
-  }
-  .nav-foot {
-    margin-top: 0;
-    padding-top: 0;
-    border-top: none;
-  }
-  .main {
-    padding: 22px 16px 48px;
-  }
-  .page-head {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-  }
+  .app { flex-direction: column; }
+  .page-head { flex-direction: column; align-items: flex-start; gap: 12px; }
 }
 
 body[data-page="login"] {
@@ -1798,7 +1756,7 @@ body[data-page="login"] .err {
   font-size: 13px;
   min-height: 18px;
 }
-@media (max-width: 760px) {
+@media (max-width: 720px) {
   body[data-page="login"] .box { padding: 28px 24px; }
 }
 
@@ -2453,3 +2411,299 @@ body[data-page="login"] .err {
 .chart-legend .lg-dead i { background: var(--c-red); border-radius: 2px; }
 .grave-chart-wrap .block-title { margin: 12px 0 6px; font-size: 14px; }
 .grave-chart-wrap .stats { margin: 8px 0; }
+
+
+/* ===== MOBILE v2 ===== */
+@media (max-width: 720px) {
+  /* --- 2. 顶栏：品牌+退出一行，菜单横向滑动标签条，吸顶，适配安全区 --- */
+  .app { min-height: 100vh; min-height: 100dvh; }
+  .sidebar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas: "brand foot" "nav nav";
+    align-items: center;
+    gap: 8px 12px;
+    padding: calc(10px + env(safe-area-inset-top, 0px)) calc(14px + env(safe-area-inset-right, 0px)) 0 calc(14px + env(safe-area-inset-left, 0px));
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    height: auto;
+  }
+  .brand { grid-area: brand; }
+  .brand h1 { font-size: 16px; }
+  .nav-foot { grid-area: foot; margin: 0; padding: 0; border: 0; }
+  .nav-logout { margin: 0; min-height: 40px; padding: 0 4px; }
+  .nav {
+    grid-area: nav;
+    display: flex;
+    flex-direction: row;
+    flex: none;
+    margin: 0 -14px;
+    padding: 0 14px;
+    gap: 2px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .nav::-webkit-scrollbar { display: none; }
+  .nav-item {
+    flex: 0 0 auto;
+    min-height: 42px;
+    padding: 0 12px;
+    white-space: nowrap;
+    border-left: none;
+    border-bottom: 2px solid transparent;
+  }
+  .nav-item.active { background: transparent; border-bottom-color: var(--accent); }
+  .main {
+    padding: 18px calc(14px + env(safe-area-inset-right, 0px)) calc(48px + env(safe-area-inset-bottom, 0px)) calc(14px + env(safe-area-inset-left, 0px));
+  }
+
+  /* --- 3. 触控：最小高度 40px，输入框 16px，工具栏按钮两列等宽 --- */
+  .btn, .btn-sm, .page-btn, .seg-btn, .sel, .inp, .search-inp, .logs-keep input {
+    min-height: 40px;
+  }
+  .btn-sm { padding: 6px 12px; }
+  .inp, .sel, .search-inp, .logs-keep input, select, textarea, input[type="text"], input[type="password"], input[type="number"], input[type="search"], input[type="time"] {
+    font-size: 16px;
+  }
+  .toolbar {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .toolbar .btn { width: 100%; justify-content: center; text-align: center; }
+  .toolbar .seg { grid-column: 1 / -1; display: flex; }
+  .toolbar .seg .seg-btn { flex: 1; }
+  .toolbar .logs-keep { grid-column: 1 / -1; margin-left: 0; flex-wrap: wrap; }
+  .pool-top-actions { width: 100%; }
+  .pool-top-actions .btn { flex: 1; justify-content: center; }
+
+  /* --- 4. 筛选栏：状态标签横向滑动，搜索框占满一行；存活页 tabs 不被 toolbar grid 影响 --- */
+  .filterbar { flex-direction: column; align-items: stretch; gap: 8px; }
+  .filterbar .tabs {
+    display: flex;
+    gap: 2px;
+    margin: 0 -14px;
+    padding: 0 14px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .filterbar .tabs::-webkit-scrollbar { display: none; }
+  .filterbar .tab { flex: 0 0 auto; min-height: 40px; white-space: nowrap; }
+  .filter-right { width: 100%; }
+  .search-inp { width: 100%; flex: 1; }
+  .toolbar .tabs { grid-column: 1 / -1; display: flex; }
+  .toolbar .tabs .tab-btn { flex: 1; min-height: 40px; }
+
+  /* --- 5. 账号表、密钥表：手机卡片式（不含日志表） --- */
+  #page-accounts .table-area,
+  #page-keys .form-block { overflow-x: visible; }
+  #page-accounts .acc-table,
+  #page-keys .acc-table,
+  #page-accounts .acc-table tbody,
+  #page-keys .acc-table tbody,
+  #page-accounts .acc-table tr,
+  #page-keys .acc-table tr,
+  #page-accounts .acc-table td,
+  #page-keys .acc-table td { display: block; width: 100%; }
+  #page-accounts .acc-table thead,
+  #page-keys .acc-table thead { display: none; }
+  #page-accounts .acc-table tr[data-email],
+  #page-keys .acc-table tr[data-id] {
+    margin-bottom: 12px;
+    padding: 10px 14px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    background: #fcfbf7;
+  }
+  #page-accounts .acc-table td[data-label],
+  #page-keys .acc-table td[data-label] {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    padding: 6px 0;
+    border-bottom: 1px dashed var(--border);
+    text-align: right;
+    word-break: break-all;
+  }
+  #page-accounts .acc-table td[data-label]::before,
+  #page-keys .acc-table td[data-label]::before {
+    content: attr(data-label);
+    flex: none;
+    color: var(--muted);
+    font-size: 12px;
+    text-align: left;
+  }
+  #page-accounts .acc-table td.c-idx,
+  #page-keys .acc-table td.c-idx { display: none; }
+  #page-accounts .acc-table td.c-act,
+  #page-keys .acc-table td.c-act {
+    display: flex;
+    gap: 8px;
+    padding: 10px 0 2px;
+    border: 0;
+    white-space: normal;
+  }
+  #page-accounts .acc-table td.c-act .btn-sm,
+  #page-keys .acc-table td.c-act .btn-sm { flex: 1; }
+  #page-accounts .acc-table td.empty,
+  #page-keys .acc-table td.empty { display: block; text-align: center; }
+  .key-cell { justify-content: flex-end; }
+
+  /* --- 6. 日志表：保留横向滚动，第一列固定，右侧渐隐提示可滑动 --- */
+  #page-logs .table-area {
+    position: relative;
+    -webkit-overflow-scrolling: touch;
+    background:
+      linear-gradient(to right, #fff 30%, rgba(255,255,255,0)) left center / 28px 100% no-repeat local,
+      linear-gradient(to left, #fff 30%, rgba(255,255,255,0)) right center / 28px 100% no-repeat local,
+      linear-gradient(to right, rgba(45,38,28,.14), rgba(45,38,28,0)) left center / 10px 100% no-repeat scroll,
+      linear-gradient(to left, rgba(45,38,28,.14), rgba(45,38,28,0)) right center / 10px 100% no-repeat scroll,
+      #fff;
+  }
+  .log-table { min-width: 760px; }
+  .log-table th:first-child,
+  .log-table td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: #fff;
+  }
+  .log-table th:first-child { background: #f7f5ef; }
+  .log-table td:first-child input { width: 20px; height: 20px; }
+  .log-open { min-height: 40px; min-width: 56px; }
+  #page-logs .table-foot { flex-wrap: wrap; gap: 8px; }
+
+  /* --- 7. 设置页 / 表单：单列，保存按钮吸底 --- */
+  .form-block { padding: 16px 14px; }
+  .settings-grid { grid-template-columns: 1fr; gap: 12px; }
+  .key-new { flex-direction: column; align-items: stretch; }
+  .key-new .inp { min-width: 0; width: 100%; }
+  .key-new .btn { width: 100%; }
+  #page-system .form-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 18px -14px -16px;
+    padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+    background: var(--bg);
+    border-top: 1px solid var(--border-strong);
+    border-radius: 0 0 var(--radius) var(--radius);
+  }
+  #page-system .form-actions .btn-primary { flex: 1; }
+
+  /* --- 8. 弹窗：手机底部抽屉 --- */
+  .modal-mask { align-items: flex-end; justify-content: center; }
+  .modal, .modal-lg {
+    width: 100%;
+    max-width: 100%;
+    max-height: 88vh;
+    max-height: 88dvh;
+    border-radius: var(--radius) var(--radius) 0 0;
+    border-bottom: 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  #pool-key-mask .modal { max-width: 100%; padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px)); }
+  .modal-lg { padding: 0 0 env(safe-area-inset-bottom, 0px); }
+  .modal-head { padding: 14px 16px; }
+  .detail-body { padding: 14px 16px 18px; }
+  .detail-info { grid-template-columns: 1fr; gap: 10px; }
+  .modal-actions .btn { flex: 1; min-height: 44px; }
+  .modal-x { min-width: 40px; min-height: 40px; }
+
+  /* --- 9. 对话页：dvh 高度，输入区贴底，模型下拉独占一行 --- */
+  #page-chat {
+    height: calc(100vh - 150px);
+    height: calc(100dvh - 150px);
+    min-height: 440px;
+  }
+  #page-chat .page-head { padding-bottom: 10px; }
+  .chat-messages { padding: 12px 0 14px; }
+  .chat-composer {
+    position: sticky;
+    bottom: 0;
+    padding: 10px;
+    margin-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .chat-input { min-height: 64px; max-height: 30vh; }
+  .chat-model-select { width: 100%; flex-basis: 100%; }
+  .chat-actions .btn-primary { min-height: 44px; }
+  .chat-bubble { max-width: 100%; padding: 10px 12px; }
+
+  /* --- 10. API 文档页：取消固定高度和内部滚动，整页自然滚动，参数表单列 --- */
+  .page#page-api {
+    height: auto;
+    overflow: visible;
+    display: block;
+  }
+  .api-docs { display: block; }
+  .api-nav {
+    margin-bottom: 12px;
+    padding: 8px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .api-nav::-webkit-scrollbar { display: none; }
+  .api-nav-title { display: none; }
+  .api-nav a {
+    flex: 0 0 auto;
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    border-left: 0;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+  }
+  .api-content { overflow: visible; padding: 0; gap: 12px; }
+  .api-card { padding: 16px 14px; scroll-margin-top: 130px; }
+  .api-params { grid-template-columns: 1fr; gap: 2px 0; }
+  .api-params b { margin-top: 8px; }
+  .api-params em { grid-column: auto; margin-top: 0; }
+  .api-meta { flex-wrap: wrap; gap: 4px 14px; }
+  .api-meta code { max-width: 100%; overflow-x: auto; }
+
+  /* --- 11. 其他：号池页、日志详情、额度卡片、存活页 --- */
+  .pool-title h1 { font-size: 22px; }
+  .pool-title .logo { width: 24px; height: 24px; }
+  .pool-top { padding-bottom: 16px; margin-bottom: 16px; }
+  .pool-grid { grid-template-columns: 1fr; gap: 10px; }
+  .pool-card { min-height: 0; }
+  .page-head { padding-bottom: 14px; margin-bottom: 14px; }
+  .page-head h2 { font-size: 18px; }
+  .stats { flex-wrap: wrap; gap: 8px 16px; }
+  .quota-overview-box { padding: 14px 14px 10px; }
+  .quota-metric-value { font-size: 22px; }
+  .quota-grid { gap: 10px; }
+  .quota-card { padding: 12px 14px 10px; }
+  .quota-overview-foot { flex-direction: column; align-items: stretch; }
+  .model-strip { flex-direction: column; gap: 6px; }
+  .task-progress { max-width: none; }
+  .log-detail-meta { grid-template-columns: 1fr 1fr; gap: 14px 16px; }
+  .grave-chart-wrap { padding: 12px; }
+  .table-foot { flex-wrap: wrap; gap: 8px; }
+  .table-foot > .inline { padding-top: 0; }
+  .page-btn { min-width: 40px; }
+
+  /* --- 2b. 顶栏修复：撑满整行，去掉侧边栏遗留的固定宽度和右边框，退出登录不换行 --- */
+  .sidebar {
+    width: 100%;
+    flex: none;
+    border-right: none;
+    min-width: 0;
+  }
+  .brand { min-width: 0; }
+  .brand h1 { white-space: nowrap; }
+  .nav-foot { white-space: nowrap; }
+  .nav-logout { white-space: nowrap; }
+  .nav { min-width: 0; }
+  .nav-item { border-left: 0; }
+}

@@ -292,15 +292,15 @@ function renderTableView() {
 
   body.innerHTML = pageRows
     .map((a, i) => `<tr data-email="${esc(a.email)}">
-      <td>${start + i + 1}</td>
-      <td class="mono">${esc(a.email)}</td>
-      <td>${statusBadge(a.status)}</td>
-      <td>${quotaCell(a.quota)}</td>
-      <td class="mono">${esc(fmtTime(a.created_at) || "—")}</td>
-      <td>${esc(fmtSurvived(a.created_at))}</td>
-      <td class="mono">${esc(fmtTime(a.updated_at) || "—")}</td>
-      <td class="mono">${esc(quotaUpdatedText(a.quota))}</td>
-      <td>
+      <td data-label="#" class="c-idx">${start + i + 1}</td>
+      <td data-label="邮箱" class="mono c-main">${esc(a.email)}</td>
+      <td data-label="状态">${statusBadge(a.status)}</td>
+      <td data-label="额度">${quotaCell(a.quota)}</td>
+      <td data-label="创建日期" class="mono">${esc(fmtTime(a.created_at) || "—")}</td>
+      <td data-label="已存活">${esc(fmtSurvived(a.created_at))}</td>
+      <td data-label="上次刷新" class="mono">${esc(fmtTime(a.updated_at) || "—")}</td>
+      <td data-label="额度更新" class="mono">${esc(quotaUpdatedText(a.quota))}</td>
+      <td class="c-act">
         <button class="btn-sm act-refresh" title="会向 Claude 发 1 次请求">刷新</button>
         <button class="btn-sm act-detail">详情</button>
         <button class="btn-sm btn-danger act-del">删除</button>
@@ -1097,12 +1097,12 @@ async function loadKeys() {
       .map(
         (k, i) => `
       <tr data-id="${k.id}">
-        <td>${i + 1}</td>
-        <td>${esc(k.name || "—")}</td>
-        <td><div class="key-cell"><span class="k">${esc(k.key)}</span>
+        <td data-label="#" class="c-idx">${i + 1}</td>
+        <td data-label="备注">${esc(k.name || "—")}</td>
+        <td data-label="密钥"><div class="key-cell"><span class="k">${esc(k.key)}</span>
           <button class="btn-sm act-copy">复制</button></div></td>
-        <td class="mono">${esc(fmtTime(k.created_at) || "—")}</td>
-        <td><button class="btn-sm btn-danger act-key-del">删除</button></td>
+        <td data-label="创建时间" class="mono">${esc(fmtTime(k.created_at) || "—")}</td>
+        <td class="c-act"><button class="btn-sm btn-danger act-key-del">删除</button></td>
       </tr>`,
       )
       .join("");
