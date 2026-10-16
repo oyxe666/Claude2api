@@ -1,219 +1,117 @@
 <h1 align="center">Claude2API</h1>
+<p align="center">把 Claude.ai 账号池转成标准 API 的网关（Go）</p>
 
-<p align="center">Claude2API 是一个基于 Go 开发的 Claude.ai API 兼容网关、账号池与网页镜像服务。项目通过统一管理多个 Claude.ai 账号并自动轮询可用账号，将 Claude 模型能力以 OpenAI API 和 Anthropic API 兼容接口的形式提供给第三方客户端、自动化脚本与开发工具。Claude2API 支持 OpenAI Chat Completions、OpenAI Responses 和 Anthropic Messages 接口，兼容 Claude Code、Codex CLI 以及支持自定义 Base URL 的应用；同时提供流式输出、多轮对话、System Prompt、多模态图片输入、扩展思考（Thinking）、Function Calling / Tool Use、长上下文处理、会话清理、API Key 鉴权、调用日志和可视化后台管理。项目支持 Docker Compose 一键部署，适合个人学习、接口适配、客户端联调和 Claude API 集成测试。</p>
+Claude2API 统一管理多个 Claude.ai 账号，自动选号、失败换号，并以 **Anthropic Messages**、**OpenAI Chat Completions**、**OpenAI Responses** 三种标准接口对外提供服务。可接入 Claude Code、Codex CLI、各类 SDK 和支持自定义 Base URL 的客户端。自带管理后台：账号、密钥、调用日志、账号存活、用量统计、在线对话测试。
 
 > [!WARNING]
 > 免责声明：
 >
 > 本项目涉及对 Claude.ai 官网相关能力的逆向研究，仅供个人学习、技术研究与非商业性技术交流使用。
 >
-> - 严禁将本项目用于任何商业用途、盈利性使用、批量操作、自动化滥用或规模化调用。
-> - 严禁将本项目用于破坏市场秩序、恶意竞争、套利倒卖、二次售卖相关服务，以及任何违反 Anthropic 服务条款或当地法律法规的行为。
-> - 严禁将本项目用于生成、传播或协助生成违法、暴力、色情、未成年人相关内容，或用于诈骗、欺诈、骚扰等非法或不当用途。
+> - 严禁用于任何商业用途、盈利性使用、批量操作、自动化滥用或规模化调用。
+> - 严禁用于破坏市场秩序、恶意竞争、套利倒卖、二次售卖相关服务，以及任何违反 Anthropic 服务条款或当地法律法规的行为。
+> - 严禁用于生成、传播或协助生成违法、暴力、色情、未成年人相关内容，或用于诈骗、欺诈、骚扰等非法或不当用途。
 > - 使用者应自行承担全部风险，包括但不限于账号受限、临时封禁、永久封禁以及因违规使用导致的法律责任。
 > - 本项目依赖 Claude.ai 上游接口，上游接口、风控策略及页面结构的变化都可能导致部分功能失效。
 > - 使用本项目即视为你已充分理解并同意本免责声明；请勿使用重要账号、常用账号或高价值账号进行测试。
 
-## 本改版说明
+## 来源说明
 
-本项目基于 [basketikun/claude2api](https://github.com/basketikun/claude2api)（MIT 许可证）修改，与原作者无关联。相比原项目的差异：
+本项目基于 [basketikun/claude2api](https://github.com/basketikun/claude2api)（MIT 许可证）修改，与原作者无关联。感谢原项目。
 
-- **适配 Sonnet 5.5**：去掉会触发上游拦截的 `<think>` 指引，新增 `claude-sonnet-5-5`、`claude-haiku-5-5`。
-- **上游拒绝不再静默**：识别 `stop_reason=refusal` 并返回明确错误，按重试次数换号重试。
-- **额度显示与刷新**：记录每个账号的 5 小时 / 7 天额度，后台提供总览条、进度条、重置倒计时、单个/全部刷新。
-- **号池选号优化**：跳过额度已耗尽的账号；上游空回复视为失败并换号重试。
-- **额度均衡选号**：优先分配 5 小时剩余额度多的账号（差距在阈值内的账号轮流用），剩余明显偏少的账号暂不分配；额度快照不设过期，只看重置时间，阈值（默认 5 个百分点）可在后台调整。
-- **检查账号逐个排队**：额度检查按队列逐个执行、间隔随机，带进度条并可随时停止，额度变化实时推送到页面。
-- **定时检查账号**：每天在设定的北京时间自动检查，可提前开启 5 小时窗口，设置页显示预计耗时和运行状态。
-- **账号存活页**：新增「账号存活」页，含存活率、存活曲线、每日导入 / 阵亡图，以及「乱葬岗」（记录失效、被清理、手动删除的账号和存活时长）。
-- **手机端适配**：顶栏改为可滑动菜单，账号 / 密钥表格改为卡片，弹窗改为底部抽屉，对话页和 API 文档页适配手机屏幕。
-- **界面优化**：账号页卡片 / 表格视图切换、每页条数记忆、状态区分（失效、额度用完）、调用日志详情页改版。
-- **用量统计页**：新增「用量统计」页，近 7 / 30 天每日输入 / 输出 token 曲线、按模型的调用数、成功率和占比。数据全部来自本地调用日志，不会向 Claude 发请求。
-- **费用折算**：设置页新增「模型单价表」（默认填 Anthropic 官方 API 价格，可自行修改），用量页据此折算费用。订阅账号实际不按 token 计费，折算值仅供参考；token 为本地估算值。
-- 新增对应的单元测试。
+## 功能
 
-已知限制：
+接口
+- 三种协议：`POST /v1/messages`（Anthropic）、`POST /v1/chat/completions`、`POST /v1/responses`（OpenAI），另有 `GET /v1/models`。
+- 流式与非流式输出、多轮对话、System Prompt。
+- 工具调用：Anthropic `tools / tool_use`、OpenAI `tools / tool_calls`、Responses `function_call`。网页端只能输出纯文本，所以网关用标签化协议（tagged tool call）让模型输出 `<tool_calls>` / `<final_answer>`，再解析成各协议的工具调用格式。
+- 图片输入：支持 base64（Data URI）和 http(s) 链接，格式 jpeg / png / webp / gif，单张不超过 20 MB，自动上传到 Claude.ai。
+- 扩展思考：模型名加 `-thinking` 后缀。
+- 长上下文：提示词超过 `max_history_length` 时自动转为文本附件。
+- `stop_sequences`：不再转发给上游，由网关在本地截断，并返回 `stop_reason=stop_sequence`。这修复了 Claude Code auto mode 分类器请求返回 400 的问题。
+- WebSearch（实验性）：识别 Anthropic 服务端工具 `web_search_20250305` 的请求，输出 `server_tool_use` / `web_search_tool_result` 内容块；上游没有结构化结果时回退为文字。原生搜索块这部分尚未用真实上游数据验证。
+- 上游拒绝（`stop_reason=refusal`）会返回明确错误，并按重试次数换号重试；上游空回复视为失败并换号重试。
 
-- 额度查询用的是 claude.ai 未公开的内部接口，随时可能变化；付费账号上未实测。免费账号该接口无数据，刷新额度时会额外发一条最短对话（约消耗 1 条消息）。
-- “跳过耗尽账号”和“空回复重试”目前只有单元测试，没有线上真实触发验证。
-- 额度只在对话后更新，页面不会自动刷新，需按 F5。
+号池
+- 批量导入 `sessionKey`，自动获取邮箱和组织信息；账号状态查看、手动刷新、失效清理。
+- 账号停用 / 启用开关：停用的号不参与选号，额度照常检查。
+- 额度显示：记录每个账号的 5 小时 / 7 天额度，后台有总览条、进度条和重置倒计时，可单个或全部刷新，变化实时推送到页面。
+- 额度均衡选号：优先分配 5 小时剩余额度多的账号（与最大剩余差距在阈值内的轮流用），剩余明显偏少的暂不分配。额度快照不会过期，只看重置时间。阈值 `quota_balance_gap` 默认 0.05（5 个百分点），可在后台调整，0 为关闭。
+- 跳过额度已耗尽的账号；失败时按 `retry_count` 换号重试。
+- 检查账号逐个排队执行，间隔随机，带进度条，可随时停止。
+- 定时检查：每天在设定的北京时间自动检查，可提前开启 5 小时窗口。
+- 官网镜像：号池选择页可随机或指定账号进入 claude.ai 镜像站。
 
-## 快速开始
+管理后台
+- 账号管理（卡片 / 表格视图）、密钥管理、API 文档、对话测试、调用日志、账号存活、用量统计、系统管理。
+- 账号存活：存活率、存活曲线、每日导入 / 阵亡图，以及「乱葬岗」（失效、被清理、手动删除的账号及存活时长）。
+- 用量统计：近 7 / 30 天每日输入 / 输出 token 曲线，按模型的调用数、成功率和占比。数据来自本地调用日志，不会向 Claude 发请求。
+- 费用折算：系统管理里有「模型单价表」（默认填 Anthropic 官方 API 价格，可自行修改），用量页据此折算费用。订阅账号实际不按 token 计费，折算值仅供参考；token 为本地估算值。
+- 调用日志：时间、接口、模型、账号、状态、输入 / 输出 token、总耗时、首字延迟、TPS；可选保存完整请求与响应（`detailed_api_log`），支持详情、批量删除、只保留最近 N 条。
+- 手机端适配：顶栏可滑动，表格卡片化，弹窗为底部抽屉。
 
-Docker Compose 本地构建部署（用本仓库的代码构建镜像）：
+## 快速部署
+
+Docker Compose 本地构建（不会拉取原作者的镜像）：
 
 ```bash
 git clone https://github.com/oyxe666/Claude2api.git
 cd Claude2api
 cp config.example.yaml config.yaml
+# 编辑 config.yaml，至少修改 admin_password
 docker compose up -d --build
 ```
 
-> 本仓库的 `docker-compose.yml` 和 `docker-compose.local.yml` 都是用本仓库代码本地构建，不会拉取原作者的镜像。
->
-> 两个 compose 文件默认都把服务绑定在 **`127.0.0.1:8788`**（容器内端口仍是 8787），只允许本机访问，外网不能直连，适合前面放 nginx 等反向代理。如果需要对外直接开放，请把 `ports` 改成 `"8787:8787"`（此时务必设置好 API 密钥与后台密码）。下文示例里的 `localhost:8788` 对应这个默认端口。
+- `docker-compose.yml` 与 `docker-compose.local.yml` 内容相同，都用本仓库代码构建。
+- 服务默认只绑定 `127.0.0.1:8788`（容器内端口 8787），外网不能直连，适合前面放 nginx 等反向代理。要直接对外开放，把 `ports` 改成 `"8787:8787"`，并务必改掉管理密码、设置好 API 密钥。
+- `./data` 挂载到容器 `/app/data`，数据库为 `data/app.db`；`./config.yaml` 挂载为配置文件。
+- 打开 `http://127.0.0.1:8788/`，用 `admin_password` 登录后台。
 
-## 核心功能
+## 配置
 
-- **官网镜像**：提供 Claude.ai 官网镜像和账号池选择页面，可随机或指定可用账号进入镜像站，并自动维护访问所需的 Cookie、浏览器指纹与会话信息。
-- **号池管理**：支持批量导入 Claude.ai 账号，自动获取邮箱和组织信息，并提供账号状态查看、手动刷新、失效清理与定期巡检。
-- **账号轮询**：API 请求自动轮询可用账号，请求失败时可按配置换号重试，避免单个账号异常影响服务。
-- **OpenAI 兼容**：支持 `POST /v1/chat/completions` 和 `POST /v1/responses` 接口，可接入 OpenAI SDK 及支持自定义 Base URL 的客户端。
-- **Anthropic 兼容**：支持 `POST /v1/messages` 接口，可接入 Anthropic SDK、Claude Code 等兼容客户端。
-- **开发工具接入**：支持配置 Codex CLI、Claude Code 使用本服务的兼容 API。
-- **模型列表**：提供 `GET /v1/models` 接口，统一返回当前支持的基础模型及 Thinking 模型。
-- **流式响应**：OpenAI 与 Anthropic 接口均支持流式和非流式输出。
-- **多轮对话**：支持 System Prompt、user / assistant 历史消息以及多轮上下文拼接。
-- **多模态输入**：支持 OpenAI 与 Anthropic 格式的 Base64 图片输入，并自动上传至 Claude.ai。
-- **扩展思考**：模型名添加 `-thinking` 后缀即可启用扩展思考模式。
-- **工具调用**：支持 OpenAI `tools / tool_calls`、Responses `function_call` 和 Anthropic `tools / tool_use`，兼容流式、非流式及工具结果回传。
-- **长上下文处理**：提示词超过配置阈值时自动转换为文本附件，减少超长上下文直接提交造成的问题。
-- **会话清理**：支持请求完成后自动删除 Claude.ai 上游会话。
-- **密钥管理**：可在后台创建、查看和删除多个 API 密钥，用于号池、镜像和 API 接口鉴权。
-- **在线测试**：后台内置多轮对话测试页面，支持选择模型、流式输出和图片上传。
-- **调用日志**：记录调用时间、接口、模型、使用账号、响应状态、输入输出 Token、总耗时、首字延迟和 TPS。
-- **日志详情**：可选保存完整请求与响应内容，支持查看详情、批量删除及仅保留最近指定数量的日志。
-- **运行时配置**：可在后台调整出口代理、重试次数、长上下文阈值、会话清理、账号巡检和详细日志等设置。
+`config.yaml`（模板见 `config.example.yaml`）：
 
-## 效果展示
+| 配置项 | 默认 | 说明 |
+| --- | --- | --- |
+| `proxy` | 空 | 出口代理 |
+| `web_host` | `0.0.0.0` | 监听地址 |
+| `web_uc_host` | `localhost` | Artifacts 沙箱 Host，用反代时需要一个与主域名不同的域名 |
+| `admin_password` | `claude2api` | 管理后台密码，请务必修改 |
+| `status_check_seconds` | `21600` | 账号状态监测间隔（秒） |
+| `retry_count` | `0` | 失败换号重试次数 |
+| `delete_chat` | `true` | 请求完成后删除 Claude.ai 上游会话 |
+| `max_history_length` | `12000` | 提示词超过该长度时转为文本附件 |
+| `remove_invalid_account` | `false` | 自动移除会话失效的账号 |
+| `detailed_api_log` | `true` | 记录完整 API 请求与输出 |
+| `quota_balance_gap` | `0.05` | 额度均衡阈值，0 关闭（示例文件未列出，后台可调） |
+| `schedule_enabled` / `schedule_time` | 关 / `06:00` | 定时检查账号及北京时间（后台可调） |
+| `model_prices` | 官方价格 | 模型单价表，美元 / 百万 token（后台可调） |
 
-<table width="100%">
-  <tr>
-    <td width="50%"><img src="https://i.ibb.co/3yMvBm0R/image.png" alt="image" border="0"></td>
-    <td width="50%"><img src="https://i.ibb.co/zhpt12gG/image.png" alt="image" border="0"></td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="https://i.ibb.co/XZ4G85yp/image.png" alt="image" border="0"></td>
-    <td width="50%"><img src="https://i.ibb.co/LhxVLkYN/image.png" alt="image" border="0"></td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="https://i.ibb.co/99v19T70/image.png" alt="image" border="0"></td>
-    <td width="50%"><img src="https://i.ibb.co/ZpYzPkb9/image.png" alt="image" border="0"></td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="https://i.ibb.co/1Y0C0Nyq/image.png" alt="image" border="0"></td>
-    <td width="50%"><img src="https://i.ibb.co/rK773GJR/image.png" alt="image" border="0"></td>
-  </tr>
-</table>
+服务端口固定为 8787。大部分配置也可在后台「系统管理」修改，修改会写回 `config.yaml`。
 
-## 账号导入
+## 使用
 
-进入管理后台的「账号管理」，点击「批量导入」，每行填写一个 `sessionKey`：
+先在后台「密钥管理」创建 API 密钥。以下示例中 `<api-key>` 为占位符，`localhost:8788` 对应上面的默认端口。
 
-```text
-sk-ant-sid01-xxxxxxxx
-sk-ant-sid01-yyyyyyyy
-```
-
-导入任务会在后台执行，并自动查询账号信息。`sessionKey` 等同于账号登录凭据，请妥善保管。
+`/v1/*` 接口用 `Authorization: Bearer <api-key>` 或 `x-api-key: <api-key>` 鉴权。
 
 ### 支持的模型
 
-当前服务暴露以下基础模型，并同时提供对应的 `-thinking` 版本：
+每个基础模型都另有 `-thinking` 版本：
 
-- `claude-sonnet-4-6`
+- `claude-sonnet-4-6`（默认）
 - `claude-haiku-4-5-20251001`
 - `claude-sonnet-5`
+- `claude-sonnet-5-5`
+- `claude-haiku-5-5`
 
-实际可用性取决于账号权限和 Claude.ai 上游状态，请以 `GET /v1/models` 的返回结果为准。
-
-<details>
-<summary><code>GET /v1/models</code></summary>
-<br>
-
-获取当前服务暴露的模型列表：
+实际可用性取决于账号权限和上游状态，以 `GET /v1/models` 的返回为准。
 
 ```bash
-curl http://localhost:8788/v1/models \
-  -H "Authorization: Bearer <api-key>"
+curl http://localhost:8788/v1/models -H "Authorization: Bearer <api-key>"
 ```
 
-```json
-{
-  "object": "list",
-  "data": [
-    {
-      "id": "claude-sonnet-4-6",
-      "object": "model",
-      "created": 1750000000,
-      "owned_by": "anthropic"
-    }
-  ]
-}
-```
-
-</details>
-
-<details>
-<summary><code>POST /v1/chat/completions</code></summary>
-<br>
-
-OpenAI Chat Completions 兼容接口，支持多轮对话、图片输入以及流式输出。图片使用 Data URI：
-
-```bash
-curl http://localhost:8788/v1/chat/completions \
-  -H "Authorization: Bearer <api-key>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "claude-sonnet-4-6",
-    "messages": [
-      {
-        "role": "system",
-        "content": "回答尽量简短"
-      },
-      {
-        "role": "user",
-        "content": [
-          {"type": "text", "text": "描述这张图片"},
-          {
-            "type": "image_url",
-            "image_url": {"url": "data:image/png;base64,iVBORw0KGgo..."}
-          }
-        ]
-      }
-    ],
-    "stream": true
-  }'
-```
-
-</details>
-
-<details>
-<summary><code>POST /v1/responses</code></summary>
-<br>
-
-OpenAI Responses API 兼容接口，`input` 支持字符串或消息数组：
-
-```bash
-curl http://localhost:8788/v1/responses \
-  -H "Authorization: Bearer <api-key>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "claude-sonnet-4-6",
-    "instructions": "回答尽量简短",
-    "input": [
-      {
-        "role": "user",
-        "content": [
-          {"type": "input_text", "text": "描述这张图片"},
-          {
-            "type": "input_image",
-            "image_url": "data:image/png;base64,iVBORw0KGgo..."
-          }
-        ]
-      }
-    ],
-    "stream": false
-  }'
-```
-
-</details>
-
-<details>
-<summary><code>POST /v1/messages</code></summary>
-<br>
-
-Anthropic Messages 兼容接口，可用于接入支持自定义 Anthropic Base URL 的客户端：
+### Anthropic Messages
 
 ```bash
 curl http://localhost:8788/v1/messages \
@@ -231,11 +129,7 @@ curl http://localhost:8788/v1/messages \
           {"type": "text", "text": "描述这张图片"},
           {
             "type": "image",
-            "source": {
-              "type": "base64",
-              "media_type": "image/png",
-              "data": "iVBORw0KGgo..."
-            }
+            "source": {"type": "base64", "media_type": "image/png", "data": "iVBORw0KGgo..."}
           }
         ]
       }
@@ -244,11 +138,82 @@ curl http://localhost:8788/v1/messages \
   }'
 ```
 
-</details>
+WebSearch（实验性）：在 `tools` 里带上服务端工具即可。
+
+```json
+"tools": [{"type": "web_search_20250305", "name": "web_search"}]
+```
+
+### OpenAI Chat Completions
+
+```bash
+curl http://localhost:8788/v1/chat/completions \
+  -H "Authorization: Bearer <api-key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "claude-sonnet-4-6",
+    "messages": [
+      {"role": "system", "content": "回答尽量简短"},
+      {
+        "role": "user",
+        "content": [
+          {"type": "text", "text": "描述这张图片"},
+          {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KGgo..."}}
+        ]
+      }
+    ],
+    "stream": true
+  }'
+```
+
+### OpenAI Responses
+
+`input` 可以是字符串或消息数组：
+
+```bash
+curl http://localhost:8788/v1/responses \
+  -H "Authorization: Bearer <api-key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "claude-sonnet-4-6",
+    "instructions": "回答尽量简短",
+    "input": [
+      {
+        "role": "user",
+        "content": [
+          {"type": "input_text", "text": "描述这张图片"},
+          {"type": "input_image", "image_url": "data:image/png;base64,iVBORw0KGgo..."}
+        ]
+      }
+    ],
+    "stream": false
+  }'
+```
 
 ### 客户端接入
 
-Codex CLI 可通过自定义 OpenAI Base URL 使用 `/v1/responses`，Claude Code 可通过自定义 Anthropic Base URL 使用 `/v1/messages`；两者均填写本服务地址和后台创建的 API Key 即可。
+- Claude Code：Anthropic Base URL 设为本服务地址（`/v1/messages`），密钥填后台创建的 API 密钥。
+- Codex CLI：OpenAI Base URL 设为本服务的 `/v1`（使用 `/v1/responses`），密钥同上。
+
+### 账号导入
+
+后台「账号管理」→「批量导入」，每行一个 `sessionKey`：
+
+```text
+sk-ant-sid01-xxxxxxxx
+sk-ant-sid01-yyyyyyyy
+```
+
+导入在后台执行并自动查询账号信息。`sessionKey` 等同账号登录凭据，请妥善保管。
+
+## 已知限制
+
+- 额度查询使用 claude.ai 未公开的内部接口，随时可能变化；付费账号上未实测。免费账号该接口无数据，刷新额度时会额外发一条最短对话（约消耗 1 条消息）。
+- 额度只在对话后更新，页面不会自动刷新额度，需按 F5。
+- 「跳过耗尽账号」和「空回复重试」目前只有单元测试，没有线上真实触发验证。
+- WebSearch 原生搜索块为实验性，未用真实上游数据验证。
+- 用量统计的 token 和费用折算均为本地估算，仅供参考。
+- 账号额度用完时，上游会返回限流（rate-limited）错误，等额度重置后恢复。
 
 ## Star History
 
@@ -258,4 +223,4 @@ Codex CLI 可通过自定义 OpenAI Base URL 使用 `/v1/responses`，Claude Cod
 
 学 AI，上 L 站：[Linux.do](https://linux.do)
 
-交流群：点击链接加入群聊【开源无限画布(2群)】：https://qm.qq.com/q/Shgvco7XEu
+交流群：点击链接加入群聊【开源无限画布2群】：https://qm.qq.com/q/Shgvco7XEu
