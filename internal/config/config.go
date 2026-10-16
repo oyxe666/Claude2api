@@ -26,7 +26,7 @@ type Settings struct {
 	MaxChatHistoryLength       int    `json:"max_chat_history_length" yaml:"max_history_length"`
 	RemoveInvalidAccount       bool   `json:"remove_invalid_account" yaml:"remove_invalid_account"`
 	DetailedAPILog             bool   `json:"detailed_api_log" yaml:"detailed_api_log"`
-	// QuotaBalanceGap 额度均衡阈值（0~1）：5 小时剩余比最大者低超过该值的账号本轮不分配；0 关闭。
+	// QuotaBalanceGap 额度均衡阈值（0~1）：只在 5 小时剩余不低于「最大剩余 - 该值」的账号里轮流分配；0 关闭。
 	QuotaBalanceGap float64 `json:"quota_balance_gap" yaml:"quota_balance_gap"`
 	// ScheduleEnabled 定时检查账号开关（默认关）；ScheduleTime 为北京时间 "HH:MM"，非法时回退 "06:00"。
 	ScheduleEnabled bool   `json:"schedule_enabled" yaml:"schedule_enabled"`
@@ -116,7 +116,7 @@ func Load() {
 	}
 	configPath = filepath.Join(baseDir, "config.yaml")
 	ensureConfig(configPath)
-	current = Settings{WebHost: "127.0.0.1", WebPort: 8787, WebUCHost: "localhost", StatusCheckIntervalSeconds: 21600, ChatDelete: true, MaxChatHistoryLength: 12000, QuotaBalanceGap: 0.30, ScheduleTime: DefaultScheduleTime}
+	current = Settings{WebHost: "127.0.0.1", WebPort: 8787, WebUCHost: "localhost", StatusCheckIntervalSeconds: 21600, ChatDelete: true, MaxChatHistoryLength: 12000, QuotaBalanceGap: 0.05, ScheduleTime: DefaultScheduleTime}
 	data, _ := os.ReadFile(configPath)
 	_ = yaml.Unmarshal(data, &current)
 	current.Proxy = strings.TrimSpace(current.Proxy)

@@ -12,9 +12,11 @@ import (
 )
 
 var (
-	apiIndex     int
 	apiIndexLock sync.Mutex
 	apiClients   = map[string]*accountClient{}
+	// lastPicked 记录每个账号最近一次被选中的序号（受 apiIndexLock 保护），用于在候选里挑「最久没被用」的号。
+	lastPicked = map[string]uint64{}
+	pickSeq    uint64
 )
 
 type accountClient struct {
@@ -80,22 +82,17 @@ func skipExhausted(usable []repository.Account, now time.Time) []repository.Acco
 	return ok
 }
 
-// balanceFreshWindow 是额度快照被视为「新鲜」的最长时长，超过则该账号按未知处理。
-const balanceFreshWindow = 10 * time.Minute
-
 // fiveHourRemain 返回账号 5 小时窗口的剩余比例（0~1）。
-// 快照缺失、过期（>= balanceFreshWindow）或没有用量数据时 known=false。
-// 新鲜快照里 ResetsAt 已过，说明窗口已重置，剩余按 100% 算。
-func fiveHourRemain(a *repository.Account, now time.Time) (remain float64, known bool) {
+// 不设过期：没人动的号额度在重置前不会变，旧快照一直有效（与面板 web/quota.js 口径一致）。
+// 没有快照或没有用量数据按满额算，让新号先被用起来、产生第一份快照；
+// ResetsAt 已过说明窗口已重置，同样按 100% 算。
+func fiveHourRemain(a *repository.Account, now time.Time) float64 {
 	q := a.Quota
-	if q.UpdatedAt.IsZero() || now.Sub(q.UpdatedAt) >= balanceFreshWindow {
-		return 0, false
-	}
-	if q.FiveHour == nil || q.FiveHour.Utilization == nil {
-		return 0, false
+	if q.UpdatedAt.IsZero() || q.FiveHour == nil || q.FiveHour.Utilization == nil {
+		return 1
 	}
 	if q.FiveHour.ResetsAt > 0 && now.Unix() >= q.FiveHour.ResetsAt {
-		return 1, true
+		return 1
 	}
 	r := 1 - *q.FiveHour.Utilization
 	if r < 0 {
@@ -104,32 +101,26 @@ func fiveHourRemain(a *repository.Account, now time.Time) (remain float64, known
 	if r > 1 {
 		r = 1
 	}
-	return r, true
+	return r
 }
 
-// balanceByFiveHour 让 5 小时剩余比例明显偏低的账号本轮暂不分配，使各号额度消耗更均衡。
-// 只在「剩余比最大者」与某账号的差距超过 gap 时才跳过（恰好等于 gap 不跳过）。
-// 未知快照（缺失/过期/无用量）既不跳过也不参与求最大值：快照只在对话/检查后更新，阈值宁宽勿严。
-// gap <= 0 关闭；过滤后为空则原样返回（理论上不会发生，最大者必留）。保持原顺序。
+// balanceByFiveHour 只保留 5 小时剩余在「最大剩余 - gap」以内的账号，使额度多的号优先被用、各号逐渐拉平。
+// 差距恰好等于 gap 的保留。gap <= 0 关闭，原样返回。保持原顺序。
 func balanceByFiveHour(usable []repository.Account, now time.Time, gap float64) []repository.Account {
 	if gap <= 0 || len(usable) == 0 {
 		return usable
 	}
 	remains := make([]float64, len(usable))
-	knowns := make([]bool, len(usable))
-	maxRemain, have := 0.0, false
+	maxRemain := 0.0
 	for i := range usable {
-		remains[i], knowns[i] = fiveHourRemain(&usable[i], now)
-		if knowns[i] && (!have || remains[i] > maxRemain) {
-			maxRemain, have = remains[i], true
+		remains[i] = fiveHourRemain(&usable[i], now)
+		if i == 0 || remains[i] > maxRemain {
+			maxRemain = remains[i]
 		}
-	}
-	if !have {
-		return usable
 	}
 	ok := make([]repository.Account, 0, len(usable))
 	for i := range usable {
-		if !knowns[i] || maxRemain-remains[i] <= gap+1e-9 {
+		if maxRemain-remains[i] <= gap+1e-9 {
 			ok = append(ok, usable[i])
 		}
 	}
@@ -139,7 +130,18 @@ func balanceByFiveHour(usable []repository.Account, now time.Time, gap float64) 
 	return ok
 }
 
-// pickAPIAccount 轮询可用账号（跳过额度已耗尽的账号，并按 5 小时剩余做均衡）。
+// leastRecentlyPicked 在候选里挑最久没被选中的账号（从未选过视为 0，并列取靠前者）。调用方需持有 apiIndexLock。
+func leastRecentlyPicked(cands []repository.Account) *repository.Account {
+	best := 0
+	for i := 1; i < len(cands); i++ {
+		if lastPicked[cands[i].Email] < lastPicked[cands[best].Email] {
+			best = i
+		}
+	}
+	return &cands[best]
+}
+
+// pickAPIAccount 选号：跳过额度已耗尽的账号 → 只留 5 小时剩余接近最大值的账号 → 选其中最久没被用的。
 func pickAPIAccount() *repository.Account {
 	accounts := repository.LoadAccounts()
 	usable := make([]repository.Account, 0, len(accounts))
@@ -156,14 +158,20 @@ func pickAPIAccount() *repository.Account {
 			delete(apiClients, email)
 		}
 	}
+	for email := range lastPicked {
+		if !active[email] {
+			delete(lastPicked, email)
+		}
+	}
 	if len(usable) == 0 {
 		apiIndexLock.Unlock()
 		return nil
 	}
 	usable = skipExhausted(usable, time.Now())
 	usable = balanceByFiveHour(usable, time.Now(), config.Get().QuotaBalanceGap)
-	acct := usable[apiIndex%len(usable)]
-	apiIndex++
+	acct := *leastRecentlyPicked(usable)
+	pickSeq++
+	lastPicked[acct.Email] = pickSeq
 	apiIndexLock.Unlock()
 	return &acct
 }
