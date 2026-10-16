@@ -72,7 +72,7 @@
 
 ## 5. 进度记录（实时更新）
 
-- [ ] 0 先把 PLAN-3 的改动处理掉？（用户未决定是否先提交；本计划的改动会和 PLAN-3 的改动一起留在工作区，提交时要告知用户两个功能混在一起，或先问用户是否先提交 PLAN-3）
+- [x] 0 先把 PLAN-3 的改动处理掉？（用户未决定是否先提交；本计划的改动会和 PLAN-3 的改动一起留在工作区，提交时要告知用户两个功能混在一起，或先问用户是否先提交 PLAN-3）
 - [x] 1 repository：`Disabled` 字段、`SetAccountDisabled`、`SetAllAccountsDisabled`（2026-10-16 完成：internal/repository/account.go；`UpsertAccount` 的 DoUpdates 本来就不含 disabled，不会冲掉；尚未编译、未测试）
 - [x] 2 service（2026-10-16 完成：account.go 新增 `AccountSchedulable`、`PublicAccount.Disabled`；events.go 的 `EventAccount` 也带 disabled；dispatcher.go 的 `pickAPIAccount` 过滤停用号（active 仍按可用算，保留 lastPicked/apiClients），新增 `hasOnlyDisabledAccounts` 与“所有账号都已停用”错误文案；尚未编译、未测试；注意 `AccountSchedulable` 目前未被调用，可在收尾时删掉或保留）
 - [x] 3 handler + 路由（2026-10-16 完成：internal/handler/admin.go 新增 AdminSetAccountDisabled（400 缺邮箱 / 404 账号不存在 / 成功后 PublishQuotaChanged 推送）与 AdminSetAllAccountsDisabled；internal/router/router.go 挂 POST /api/accounts/disable 与 /api/accounts/disable-all（AdminAuth）；service 里补上了 PublicAccountView 的 Disabled 与“所有账号都已停用”错误文案；go build、go vet 通过；测试尚未写；前端待做）
@@ -80,7 +80,9 @@
 - [x] 5 测试（2026-10-16 完成：repository `TestSetAccountDisabled`（默认启用、切换、不存在返回 false、重复导入与写额度不冲掉停用、批量启用）；service `TestPickAPIAccountSkipsDisabled`（停用号不被选、仍在额度批量目标里、全部停用返回 nil 并识别、公开视图带 disabled、启用后恢复）；handler 新文件 `disable_test.go`（400 缺邮箱 / 404 不存在 / 成功 / 不泄露 sessionKey / 批量启用）；router `TestDisableRoutesRequireAdminAuth`（无凭据 401）；前端 quota.test.js 新增停用卡片与 summarize 两个测试，并修正按钮列表断言）
 - [x] 6 `go build`、`go vet`、`go test ./... -skip SDK`、node 测试全绿（2026-10-16：Go 全部包 ok；node 4 个文件全过：grave 18、live 16、prefs 10、quota 40；未提交、未部署；浏览器点击未实测；遗留：表格视图没有停用按钮、概览未单独显示“已停用 N 个”）
 - [x] 6b 补表格视图与概览（2026-10-16 完成：web/app.js 表格行新增“停用/启用”按钮（act-toggle）和“已停用”徽标，并绑定点击；web/quota.js 概览“可用账号”后追加“（已停用 N）”；node --check 通过，node 测试 4 个文件全过，go build、go test 全绿；未提交、未部署；浏览器点击未实测）
-- [ ] 7 给用户看改动，等确认后再提交、推送（用户已决定：均衡选号与停用开关分两次提交；先提交 PLAN-3 相关文件，再提交 PLAN-4 相关文件；推送前仍需用户确认）
-- [ ] 8 （用户决定）部署：先备份服务器
+- [x] 7 给用户看改动，等确认后再提交、推送（用户已决定：均衡选号与停用开关分两次提交；先提交 PLAN-3 相关文件，再提交 PLAN-4 相关文件；推送前仍需用户确认）
+- [x] 8 （用户决定）部署：先备份服务器
 
 （每项完成后在此补：日期、提交哈希、是否已部署、遗留问题。）
+
+- 2026-10-16 补记：第 0、7、8 项已完成。均衡选号（1ddfa8d）与停用开关（c70e397）已分两次提交并推送到 GitHub，服务器已备份、重建并正常运行（容器 Up，首页 200）。遗留：停用开关的浏览器点击效果尚未实测。
