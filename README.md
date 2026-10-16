@@ -222,5 +222,3 @@ sk-ant-sid01-yyyyyyyy
 ## 社区支持
 
 学 AI，上 L 站：[Linux.do](https://linux.do)
-
-交流群：点击链接加入群聊【开源无限画布2群】：https://qm.qq.com/q/Shgvco7XEu
