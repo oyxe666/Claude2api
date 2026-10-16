@@ -18,6 +18,7 @@ type EventAccount struct {
 	CreatedAt  time.Time                `json:"created_at"`
 	UpdatedAt  time.Time                `json:"updated_at"`
 	HasSession bool                     `json:"has_session"`
+	Disabled   bool                     `json:"disabled"`
 	Quota      *repository.AccountQuota `json:"quota,omitempty"`
 }
 
@@ -36,6 +37,7 @@ func EventAccountView(a *repository.Account) *EventAccount {
 		Email: a.Email, Status: a.Status,
 		CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt,
 		HasSession: SessionKey(a) != "",
+		Disabled:   a.Disabled,
 	}
 	if !a.Quota.IsZero() {
 		q := a.Quota

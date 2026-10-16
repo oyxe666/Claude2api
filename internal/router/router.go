@@ -27,6 +27,8 @@ func NewMainEngine() *gin.Engine {
 	admin.GET("/accounts", handler.AdminAccounts)
 	admin.POST("/accounts/import", handler.AdminImportAccounts)
 	admin.POST("/accounts/refresh", handler.AdminRefreshAccount)
+	admin.POST("/accounts/disable", handler.AdminSetAccountDisabled)
+	admin.POST("/accounts/disable-all", handler.AdminSetAllAccountsDisabled)
 	admin.POST("/accounts/quota/refresh", handler.AdminRefreshQuota)
 	admin.POST("/accounts/quota/refresh-all", handler.AdminRefreshAllQuota)
 	admin.POST("/accounts/check-all", handler.AdminCheckAllAccounts)

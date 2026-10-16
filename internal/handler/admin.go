@@ -138,6 +138,41 @@ func AdminUpdateConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"config": cfg})
 }
 
+// AdminSetAccountDisabled 停用/启用单个账号：停用的号不参与选号，但不删除、额度照常检查。
+func AdminSetAccountDisabled(c *gin.Context) {
+	var body struct {
+		Email    string `json:"email"`
+		Disabled bool   `json:"disabled"`
+	}
+	_ = c.ShouldBindJSON(&body)
+	email := strings.TrimSpace(body.Email)
+	if email == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供邮箱"})
+		return
+	}
+	if !repository.SetAccountDisabled(email, body.Disabled) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "账号不存在"})
+		return
+	}
+	slog.Info("[账号] 切换停用状态", "email", email, "disabled", body.Disabled)
+	service.PublishQuotaChanged(email)
+	c.JSON(http.StatusOK, gin.H{"account": service.PublicAccountView(repository.AccountByEmail(email))})
+}
+
+// AdminSetAllAccountsDisabled 批量停用/启用全部账号。
+func AdminSetAllAccountsDisabled(c *gin.Context) {
+	var body struct {
+		Disabled bool `json:"disabled"`
+	}
+	_ = c.ShouldBindJSON(&body)
+	n := repository.SetAllAccountsDisabled(body.Disabled)
+	slog.Info("[账号] 批量切换停用状态", "disabled", body.Disabled, "count", n)
+	for _, a := range repository.LoadAccounts() {
+		service.PublishQuotaChanged(a.Email)
+	}
+	c.JSON(http.StatusOK, gin.H{"count": n, "accounts": service.PublicAccounts()})
+}
+
 func AdminDeleteAccount(c *gin.Context) {
 	var body struct {
 		Email string `json:"email"`

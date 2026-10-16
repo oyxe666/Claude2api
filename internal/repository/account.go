@@ -13,7 +13,9 @@ type Account struct {
 	OrgUUID   string            `json:"org_uuid" gorm:"column:org_uuid"`
 	Cookies   map[string]string `json:"-" gorm:"serializer:json"`
 	Status    string            `json:"status,omitempty"`
-	Quota     AccountQuota      `json:"-" gorm:"column:quota;serializer:json"`
+	// Disabled 为 true 表示该账号被手动停用：不参与选号，但不删除、额度照常检查。
+	Disabled  bool              `json:"disabled" gorm:"not null;default:false"`
+	Quota    AccountQuota      `json:"-" gorm:"column:quota;serializer:json"`
 	CreatedAt time.Time         `json:"created_at"`
 	UpdatedAt time.Time         `json:"updated_at"`
 }
@@ -46,6 +48,27 @@ func UpsertAccount(a *Account) error {
 		// 只更新这些列，避免重新导入账号时把 quota（额度快照）清空。
 		DoUpdates: clause.AssignmentColumns([]string{"org_uuid", "cookies", "status", "updated_at"}),
 	}).Create(a).Error
+}
+
+// SetAccountDisabled 只更新 disabled 列（不用 Save，避免和额度快照并发写冲突）。账号不存在返回 false。
+func SetAccountDisabled(email string, disabled bool) bool {
+	if email == "" || db == nil {
+		return false
+	}
+	var n int64
+	if db.Model(&Account{}).Where("email = ?", email).Count(&n).Error != nil || n == 0 {
+		return false
+	}
+	return db.Model(&Account{}).Where("email = ?", email).UpdateColumn("disabled", disabled).Error == nil
+}
+
+// SetAllAccountsDisabled 批量停用/启用全部账号，返回受影响数量。
+func SetAllAccountsDisabled(disabled bool) int {
+	res := db.Model(&Account{}).Where("1 = 1").UpdateColumn("disabled", disabled)
+	if res.Error != nil {
+		return 0
+	}
+	return int(res.RowsAffected)
 }
 
 // UpdateAccount 修改指定账号。

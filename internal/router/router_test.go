@@ -239,3 +239,17 @@ func TestGraveyardSurvivalRequiresAdminAuth(t *testing.T) {
 		}
 	}
 }
+
+func TestDisableRoutesRequireAdminAuth(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := NewMainEngine()
+	for _, path := range []string{"/api/accounts/disable", "/api/accounts/disable-all"} {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("%s 无凭据应 401，got %d", path, w.Code)
+		}
+	}
+}

@@ -17,6 +17,8 @@ type PublicAccount struct {
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 	HasSession bool      `json:"has_session"`
+	// Disabled 为 true 表示账号被手动停用：不参与选号，额度照常检查。
+	Disabled bool `json:"disabled"`
 	// Quota 是最新额度快照；从未记录过则没有这个键。
 	Quota *repository.AccountQuota `json:"quota,omitempty"`
 }
@@ -30,6 +32,11 @@ func SessionKey(account *repository.Account) string {
 
 func AccountUsable(account *repository.Account) bool {
 	return SessionKey(account) != "" && account.Status != "expired"
+}
+
+// AccountSchedulable 表示账号可被选去对话：可用且没有被手动停用。只在选号处使用。
+func AccountSchedulable(account *repository.Account) bool {
+	return AccountUsable(account) && !account.Disabled
 }
 
 func AccountByEmail(email string) *repository.Account {
@@ -51,6 +58,7 @@ func PublicAccountView(account *repository.Account) *PublicAccount {
 		CreatedAt:  account.CreatedAt,
 		UpdatedAt:  account.UpdatedAt,
 		HasSession: SessionKey(account) != "",
+		Disabled:   account.Disabled,
 	}
 	if !account.Quota.IsZero() {
 		q := account.Quota

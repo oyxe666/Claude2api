@@ -68,7 +68,7 @@ const CONFIG_DEFAULTS = {
   detailed_api_log: false,
   status_check_interval_seconds: 21600,
   remove_invalid_account: false,
-  quota_balance_gap: 0.3,
+  quota_balance_gap: 0.05,
   schedule_enabled: false,
   schedule_time: "06:00",
 };
@@ -294,13 +294,14 @@ function renderTableView() {
     .map((a, i) => `<tr data-email="${esc(a.email)}">
       <td data-label="#" class="c-idx">${start + i + 1}</td>
       <td data-label="邮箱" class="mono c-main">${esc(a.email)}</td>
-      <td data-label="状态">${statusBadge(a.status)}</td>
+      <td data-label="状态">${statusBadge(a.status)}${a.disabled ? ' <span class="badge unknown">已停用</span>' : ""}</td>
       <td data-label="额度">${quotaCell(a.quota)}</td>
       <td data-label="创建日期" class="mono">${esc(fmtTime(a.created_at) || "—")}</td>
       <td data-label="已存活">${esc(fmtSurvived(a.created_at))}</td>
       <td data-label="上次刷新" class="mono">${esc(fmtTime(a.updated_at) || "—")}</td>
       <td data-label="额度更新" class="mono">${esc(quotaUpdatedText(a.quota))}</td>
       <td class="c-act">
+        <button class="btn-sm act-toggle" title="${a.disabled ? "重新参与选号" : "不再接请求，账号保留"}" data-disabled="${a.disabled ? "1" : "0"}">${a.disabled ? "启用" : "停用"}</button>
         <button class="btn-sm act-refresh" title="会向 Claude 发 1 次请求">刷新</button>
         <button class="btn-sm act-detail">详情</button>
         <button class="btn-sm btn-danger act-del">删除</button>
@@ -655,6 +656,35 @@ function stopLive() {
   if (liveTimer) { clearTimeout(liveTimer); liveTimer = null; }
   if (liveSource) { liveSource.close(); liveSource = null; }
 }
+async function toggleDisabled(email, disabled) {
+  try {
+    const r = await api("/api/accounts/disable", "POST", { email, disabled });
+    mergeAccount(r.account);
+    rerender();
+    showMsg(disabled ? `已停用 ${email}` : `已启用 ${email}`, "ok");
+  } catch (e) {
+    showMsg("操作失败: " + e.message, "err");
+  }
+}
+
+async function setAllDisabled(disabled) {
+  if (disabled) {
+    const ok = await confirmDialog("停用后所有请求都会报错，直到你启用至少一个账号。确认全部停用？", { title: "全部停用" });
+    if (!ok) return;
+  }
+  try {
+    const r = await api("/api/accounts/disable-all", "POST", { disabled });
+    if (Array.isArray(r.accounts)) {
+      ACCOUNTS.length = 0;
+      ACCOUNTS.push(...r.accounts);
+    }
+    rerender();
+    showMsg(disabled ? "已全部停用" : "已全部启用", "ok");
+  } catch (e) {
+    showMsg("操作失败: " + e.message, "err");
+  }
+}
+
 async function deleteOne(email) {
   const ok = await confirmDialog(`确认删除账号 ${email} ？`, {
     title: "删除账号",
@@ -1470,6 +1500,8 @@ $("#import-mask").addEventListener("click", (e) => {
   if (e.target === $("#import-mask")) $("#import-mask").classList.add("hidden");
 });
 $("#btn-del-expired").addEventListener("click", deleteExpired);
+$("#btn-disable-all").addEventListener("click", () => setAllDisabled(true));
+$("#btn-enable-all").addEventListener("click", () => setAllDisabled(false));
 $("#btn-cfg-save").addEventListener("click", saveConfig);
 $("#btn-logout").addEventListener("click", logout);
 $("#btn-key-create").addEventListener("click", createKey);
@@ -1653,7 +1685,9 @@ $("#acc-body").addEventListener("click", (e) => {
   const tr = e.target.closest("tr[data-email]");
   if (!tr) return;
   const email = tr.dataset.email;
-  if (e.target.classList.contains("act-refresh"))
+  if (e.target.classList.contains("act-toggle"))
+    toggleDisabled(email, e.target.dataset.disabled !== "1");
+  else if (e.target.classList.contains("act-refresh"))
     refreshAccount(email, e.target);
   else if (e.target.classList.contains("act-detail")) openDetail(email);
   else if (e.target.classList.contains("act-del")) deleteOne(email);
@@ -1667,6 +1701,7 @@ $("#quota-grid").addEventListener("click", (e) => {
   if (!email) return;
   switch (b.dataset.act) {
     case "refresh-quota": refreshQuotaOne(email); break;
+    case "toggle-disabled": toggleDisabled(email, b.dataset.disabled !== "1"); break;
     case "refresh-acct": refreshAccount(email, b); break;
     case "detail": openDetail(email); break;
     case "delete": deleteOne(email); break;

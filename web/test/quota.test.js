@@ -441,7 +441,28 @@ test("buildCard: 刷新按钮 aria-label / loading / 无时间显示暂无", () 
   assert.strictEqual(r2.getAttribute("aria-busy"), "true");
   // 账号操作按钮齐全
   const acts = find(busy, (n) => n.tag === "button").map((b) => b.getAttribute("data-act"));
-  assert.deepStrictEqual(acts, ["refresh-quota", "refresh-acct", "detail", "delete"]);
+  assert.deepStrictEqual(acts, ["refresh-quota", "toggle-disabled", "refresh-acct", "detail", "delete"]);
+});
+test("buildCard: 停用卡片有 is-disabled、徽标，按钮文案为启用", () => {
+  const on = Q.buildCard(makeDoc(), { email: "a@x", status: "active", disabled: true }, NOW, {});
+  assert.ok(hasCls(on, "is-disabled"));
+  assert.ok(allText(on).includes("已停用"));
+  const t1 = find(on, (n) => n.getAttribute("data-act") === "toggle-disabled")[0];
+  assert.strictEqual(t1.textContent, "启用");
+  assert.strictEqual(t1.getAttribute("data-disabled"), "1");
+  const off = Q.buildCard(makeDoc(), { email: "a@x", status: "active" }, NOW, {});
+  assert.ok(!hasCls(off, "is-disabled"));
+  const t2 = find(off, (n) => n.getAttribute("data-act") === "toggle-disabled")[0];
+  assert.strictEqual(t2.textContent, "停用");
+  assert.strictEqual(t2.getAttribute("data-disabled"), "0");
+});
+test("summarize: 停用账号不算可用，单独计数", () => {
+  const s = Q.summarize([
+    { email: "a@x", status: "active" },
+    { email: "b@x", status: "active", disabled: true },
+  ], NOW);
+  assert.strictEqual(s.available, 1);
+  assert.strictEqual(s.disabled, 1);
 });
 test("buildCard: 单账号刷新按钮 title 写明会向 Claude 发 1 次请求", () => {
   const card = Q.buildCard(makeDoc(), { email: "a@x", status: "active" }, NOW, {});

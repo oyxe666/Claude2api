@@ -148,8 +148,11 @@ func pickAPIAccount() *repository.Account {
 	active := map[string]bool{}
 	for i := range accounts {
 		if AccountUsable(&accounts[i]) {
-			usable = append(usable, accounts[i])
 			active[accounts[i].Email] = true
+			// 手动停用的号保留客户端与轮流记录，只是不参与本次选号。
+			if !accounts[i].Disabled {
+				usable = append(usable, accounts[i])
+			}
 		}
 	}
 	apiIndexLock.Lock()
@@ -174,6 +177,21 @@ func pickAPIAccount() *repository.Account {
 	lastPicked[acct.Email] = pickSeq
 	apiIndexLock.Unlock()
 	return &acct
+}
+
+// hasOnlyDisabledAccounts 表示存在可用账号，但它们全部被手动停用。
+func hasOnlyDisabledAccounts() bool {
+	any := false
+	accounts := repository.LoadAccounts()
+	for i := range accounts {
+		if AccountUsable(&accounts[i]) {
+			if !accounts[i].Disabled {
+				return false
+			}
+			any = true
+		}
+	}
+	return any
 }
 
 // dropInvalidSession：建会话报 account_session_invalid 且开启自动移除时，先入乱葬岗再删号。
@@ -218,6 +236,9 @@ func (Dispatcher) Complete(reqModel string, prompt Prompt, onText func(string)) 
 	for attempt := 0; attempt <= retries; attempt++ {
 		acct := pickAPIAccount()
 		if acct == nil {
+			if hasOnlyDisabledAccounts() {
+				return res, fmt.Errorf("所有账号都已停用，请在账号页启用至少一个")
+			}
 			return res, fmt.Errorf("号池中没有可用账号")
 		}
 		email := acct.Email

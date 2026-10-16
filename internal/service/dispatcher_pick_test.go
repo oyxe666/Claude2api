@@ -238,3 +238,41 @@ func TestPickAPIAccountUsesBalance(t *testing.T) {
 		t.Fatalf("gap=0 时三个号都应出现: %v", m)
 	}
 }
+
+func TestPickAPIAccountSkipsDisabled(t *testing.T) {
+	setupDB(t)
+	addAccount(t, "on@example.com", testOrg, "sk-on")
+	addAccount(t, "off@example.com", testOrg, "sk-off")
+	repository.SetAccountDisabled("off@example.com", true)
+	for i := 0; i < 10; i++ {
+		if a := pickAPIAccount(); a == nil || a.Email != "on@example.com" {
+			t.Fatalf("停用的号不应被选中，got %+v", a)
+		}
+	}
+	// 停用号仍在额度批量检查的目标里
+	found := false
+	for _, e := range QuotaBatchTargets() {
+		if e == "off@example.com" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("停用号的额度仍应被检查")
+	}
+	// 全部停用：选号返回 nil，且识别为“全部被停用”
+	repository.SetAllAccountsDisabled(true)
+	if a := pickAPIAccount(); a != nil {
+		t.Fatalf("全部停用时应返回 nil，got %+v", a)
+	}
+	if !hasOnlyDisabledAccounts() {
+		t.Fatal("应识别为所有账号都已停用")
+	}
+	if v := PublicAccountView(repository.AccountByEmail("off@example.com")); !v.Disabled {
+		t.Fatal("公开视图应带 disabled")
+	}
+	// 重新启用后恢复
+	repository.SetAllAccountsDisabled(false)
+	if pickAPIAccount() == nil {
+		t.Fatal("启用后应能选到号")
+	}
+}

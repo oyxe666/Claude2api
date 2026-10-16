@@ -80,6 +80,7 @@
     return {
       email: String(a.email || ""),
       usable,
+      disabled: a.disabled === true,
       expired: a.status === "expired",
       five,
       seven,
@@ -97,6 +98,7 @@
     const s = {
       total: list.length,
       available: 0,
+      disabled: 0,
       avg5: null,
       avg7: null,
       n5: 0,
@@ -121,7 +123,9 @@
         sum7 += v.seven.remaining;
         s.n7++;
       }
-      if (v.exhausted) {
+      if (v.disabled) {
+        s.disabled++;
+      } else if (v.exhausted) {
         s.unavailable++;
         if (v.recoverAtMs !== null) recoverTimes.push(v.recoverAtMs);
       } else {
@@ -193,7 +197,7 @@
   function overviewText(summary, nowMs) {
     const s = summary;
     const out = {
-      available: `${s.available}/${s.total}`,
+      available: `${s.available}/${s.total}` + (s.disabled ? `（已停用 ${s.disabled}）` : ""),
       avg5: s.avg5 === null ? "—" : fmtPct(s.avg5),
       avg7: s.avg7 === null ? "—" : fmtPct(s.avg7),
       recovery: "—",
@@ -295,6 +299,7 @@
     if (v.exhausted) cls.push("is-exhausted");
     if (v.failed) cls.push("is-failed");
     if (v.expired) cls.push("is-expired");
+    if (v.disabled) cls.push("is-disabled");
     const card = el(doc, "div", cls.join(" "));
     card.setAttribute("data-email", v.email);
 
@@ -304,6 +309,7 @@
     head.appendChild(email);
     const badges = el(doc, "span", "quota-badges");
     if (v.expired) badges.appendChild(el(doc, "span", "quota-badge b-expired", "已失效"));
+    if (v.disabled) badges.appendChild(el(doc, "span", "quota-badge b-disabled", "已停用"));
     if (v.exhausted) {
       const txt = v.recoverAtMs === null ? "已耗尽" : `已耗尽 · ${recoverText(v.recoverAtMs, nowMs)}`;
       badges.appendChild(el(doc, "span", "quota-badge b-exhausted", txt));
@@ -332,6 +338,7 @@
     const foot = el(doc, "div", "quota-card-foot");
     const acts = el(doc, "span", "quota-actions");
     for (const [act, text, extra] of [
+      ["toggle-disabled", v.disabled ? "启用" : "停用", ""],
       ["refresh-acct", "刷新账号", ""],
       ["detail", "详情", ""],
       ["delete", "删除", " btn-danger"],
@@ -340,6 +347,10 @@
       b.setAttribute("type", "button");
       b.setAttribute("data-act", act);
       if (act === "refresh-acct") b.setAttribute("title", "会向 Claude 发 1 次请求");
+      if (act === "toggle-disabled") {
+        b.setAttribute("title", v.disabled ? "重新参与选号" : "不再接请求，账号保留");
+        b.setAttribute("data-disabled", v.disabled ? "1" : "0");
+      }
       acts.appendChild(b);
     }
     foot.appendChild(acts);

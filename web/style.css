@@ -2312,6 +2312,8 @@ body[data-page="login"] .err {
 }
 .pool-card:hover, .quota-card:hover, .grave-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-2); }
 .quota-card.is-expired:hover { transform: none; box-shadow: var(--shadow-1); }
+.quota-card.is-disabled { opacity: 0.6; border-style: dashed; border-color: var(--dead-bd); }
+.quota-badge.b-disabled { color: var(--dead); background: var(--dead-bg); border: 1px solid var(--dead-bd); }
 
 /* 进度条 */
 .quota-fill { transition: width 0.45s var(--ease), background-color 0.3s; }
