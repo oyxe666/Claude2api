@@ -110,6 +110,12 @@ func sanitizeSystemPrompt(text string) string {
 }
 
 func runAndCollect(endpoint, model string, stream bool, prompt service.Prompt, emit func(string)) (string, error) {
+	text, _, err := runAndCollectStop(endpoint, model, stream, prompt, emit)
+	return text, err
+}
+
+// runAndCollectStop 同 runAndCollect，额外返回命中的 stop 序列（未命中为空串）。
+func runAndCollectStop(endpoint, model string, stream bool, prompt service.Prompt, emit func(string)) (string, string, error) {
 	start := time.Now()
 	firstTokenMs := int64(0)
 	firstSeen := false
@@ -134,11 +140,16 @@ func runAndCollect(endpoint, model string, stream bool, prompt service.Prompt, e
 	write(filter.push("", true))
 	text := output.String()
 	logCompletion(endpoint, model, stream, prompt, text, res, err, start, firstTokenMs)
-	return text, err
+	return text, filter.matched, err
 }
 
 func runNonStream(c *gin.Context, endpoint, model string, prompt service.Prompt) (string, bool) {
-	text, err := runAndCollect(endpoint, model, false, prompt, nil)
+	text, _, ok := runNonStreamStop(c, endpoint, model, prompt)
+	return text, ok
+}
+
+func runNonStreamStop(c *gin.Context, endpoint, model string, prompt service.Prompt) (string, string, bool) {
+	text, matched, err := runAndCollectStop(endpoint, model, false, prompt, nil)
 	if err != nil {
 		code := http.StatusBadGateway
 		var upstream *service.CompletionError
@@ -147,7 +158,7 @@ func runNonStream(c *gin.Context, endpoint, model string, prompt service.Prompt)
 		}
 		apiError(c, code, err.Error())
 	}
-	return text, err == nil
+	return text, matched, err == nil
 }
 
 func logCompletion(endpoint, model string, stream bool, prompt service.Prompt, output string, res service.CompletionResult, err error, start time.Time, firstTokenMs int64) {
@@ -177,6 +188,7 @@ type outputFilter struct {
 	stop              []string
 	maxBytes, written int
 	pending           string
+	matched           string // 命中的 stop 序列
 	done              bool
 }
 
@@ -186,26 +198,26 @@ func (f *outputFilter) push(text string, final bool) string {
 	}
 	f.pending += text
 	cut := len(f.pending)
-	stopAt, keep := -1, 0
+	stopAt, keep, hit := -1, 0, ""
 	for _, stop := range f.stop {
 		if stop == "" {
 			continue
 		}
 		if i := strings.Index(f.pending, stop); i >= 0 {
 			if stopAt < 0 || i < stopAt {
-				stopAt = i
+				stopAt, hit = i, stop
 			}
 		} else {
 			keep = max(keep, len(stop)-1)
 		}
 	}
 	if stopAt >= 0 {
-		cut, f.done = stopAt, true
+		cut, f.done, f.matched = stopAt, true, hit
 	} else if !final {
 		cut = max(0, len(f.pending)-keep)
 	}
 	if f.maxBytes > 0 && cut > f.maxBytes-f.written {
-		cut, f.done = max(0, f.maxBytes-f.written), true
+		cut, f.done, f.matched = max(0, f.maxBytes-f.written), true, ""
 	}
 	for cut > 0 && !utf8.ValidString(f.pending[:cut]) {
 		cut--

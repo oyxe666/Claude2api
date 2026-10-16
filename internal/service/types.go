@@ -20,8 +20,12 @@ type ClaudeAccount struct {
 // SseEvent 是 completion SSE 事件。
 type SseEvent struct {
 	Type         string `json:"type"`
+	Index        int    `json:"index"`
 	ContentBlock struct {
-		Type string `json:"type"`
+		Type    string          `json:"type"`
+		Name    string          `json:"name"`
+		Input   json.RawMessage `json:"input"`
+		Content json.RawMessage `json:"content"`
 	} `json:"content_block"`
 	Delta struct {
 		Type        string `json:"type"`
@@ -53,6 +57,22 @@ type Prompt struct {
 	Temperature *float64
 	TopP        *float64
 	Stop        []string
+	// OnSearch 非空时，上游联网搜索的查询与结构化结果会通过它回传（可选）。
+	OnSearch func(SearchEvent)
+}
+
+// SearchResult 是上游联网搜索返回的一条结果。
+type SearchResult struct {
+	Title   string
+	URL     string
+	PageAge string
+	Snippet string
+}
+
+// SearchEvent 是一次联网搜索：查询词与结果列表。
+type SearchEvent struct {
+	Query   string
+	Results []SearchResult
 }
 
 type CompletionResult struct {

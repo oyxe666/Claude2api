@@ -437,9 +437,10 @@ func (claudeAI *ClaudeAI) SendMessage(convID, model string, prompt Prompt, attac
 	if prompt.TopP != nil {
 		body["top_p"] = *prompt.TopP
 	}
-	if len(prompt.Stop) > 0 {
-		body["stop_sequences"] = prompt.Stop
-	}
+	// 同理，stop_sequences 也不能转发，否则上游会返回
+	// "stop_sequences: Extra inputs are not permitted"（Claude Code auto mode
+	// 分类器请求带 ["</block>"]，转发会导致 400）。停止词由网关本地
+	// outputFilter 截断（见 internal/adapter/pipeline.go）。
 	if len(attachments) > 0 {
 		body["attachments"] = attachments
 	}
@@ -486,7 +487,7 @@ func (claudeAI *ClaudeAI) SendMessage(convID, model string, prompt Prompt, attac
 		}
 		return resp.StatusCode, fmt.Errorf("发送消息 HTTP %d: %s", resp.StatusCode, bodyText)
 	}
-	return 200, parseCompletionSSE(resp.Body, onText, claudeAI.OnQuota)
+	return 200, parseCompletionSSEWithSearch(resp.Body, onText, claudeAI.OnQuota, prompt.OnSearch)
 }
 
 // refusalReason 返回本次事件声明的停止原因。
@@ -515,6 +516,13 @@ func (ev SseEvent) refusalDetail() string {
 
 // parseCompletionSSE 解析 completion 流。
 func parseCompletionSSE(raw io.Reader, onText func(string), onQuota QuotaSink) error {
+	return parseCompletionSSEWithSearch(raw, onText, onQuota, nil)
+}
+
+// parseCompletionSSEWithSearch 同 parseCompletionSSE，额外把联网搜索的
+// 查询与结构化结果交给 onSearch（可为 nil）。
+func parseCompletionSSEWithSearch(raw io.Reader, onText func(string), onQuota QuotaSink, onSearch func(SearchEvent)) error {
+	search := newSearchTracker(onSearch)
 	// 额度修改先攒着，流结束（含出错返回）时按顺序一次性落库，
 	// 避免在读取流的循环里同步写库拖慢流式输出。
 	var pending []func(*repository.AccountQuota)
@@ -568,6 +576,7 @@ func parseCompletionSSE(raw io.Reader, onText func(string), onQuota QuotaSink) e
 		if reason := ev.refusalReason(); reason == "refusal" {
 			return fmt.Errorf("上游安全分类器拒绝了本次请求%s", ev.refusalDetail())
 		}
+		search.handle(ev)
 		switch ev.ContentBlock.Type {
 		case "tool_use":
 			useTool = true

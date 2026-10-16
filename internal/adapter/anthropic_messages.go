@@ -42,7 +42,8 @@ func AnthropicMessages(c *gin.Context) {
 	}
 	model := modelOrDefault(req.Model)
 
-	tools := parseTools(req.Tools)
+	// Anthropic 服务端工具 web_search_* 不是客户端函数：剔除它，改由上游原生联网搜索。
+	tools, search := splitWebSearchTools(parseTools(req.Tools))
 	msgs, images := normalizeAnthropicMessages(req.Messages)
 	if sysText, _ := flattenContent(req.System); sysText != "" {
 		for _, text := range []string{
@@ -64,6 +65,9 @@ func AnthropicMessages(c *gin.Context) {
 		return
 	}
 	prompt.ForceInline = true
+	if search != nil {
+		prompt.Text += search.hint()
+	}
 	prompt.Text += "\n\nContinue the conversation above with only the assistant's next response."
 	prompt.RawRequest = raw
 	prompt.MaxTokens, prompt.Temperature, prompt.TopP, prompt.Stop = req.MaxTokens, req.Temperature, req.TopP, req.StopSequences
@@ -76,6 +80,14 @@ func AnthropicMessages(c *gin.Context) {
 		return
 	}
 
+	if search != nil {
+		if req.Stream {
+			anthropicSearchStream(c, model, prompt)
+		} else {
+			anthropicSearchNonStream(c, model, prompt)
+		}
+		return
+	}
 	if req.Stream {
 		anthropicStream(c, model, prompt)
 	} else {
@@ -182,9 +194,13 @@ func anthropicToolResultText(content any) string {
 }
 
 func anthropicNonStream(c *gin.Context, model string, prompt service.Prompt) {
-	content, ok := runNonStream(c, "messages", model, prompt)
+	content, matched, ok := runNonStreamStop(c, "messages", model, prompt)
 	if !ok {
 		return
+	}
+	stopReason, stopSeq := "end_turn", any(nil)
+	if matched != "" {
+		stopReason, stopSeq = "stop_sequence", matched
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"id":            "msg_" + shortID(),
@@ -192,19 +208,20 @@ func anthropicNonStream(c *gin.Context, model string, prompt service.Prompt) {
 		"role":          "assistant",
 		"model":         model,
 		"content":       []gin.H{{"type": "text", "text": content}},
-		"stop_reason":   "end_turn",
-		"stop_sequence": nil,
+		"stop_reason":   stopReason,
+		"stop_sequence": stopSeq,
 		"usage":         gin.H{"input_tokens": tokenCount(prompt.Text), "output_tokens": tokenCount(content)},
 	})
 }
 
 type messageStream struct {
 	*sseWriter
-	index int
+	index    int
+	searches int // 已输出的 web_search 次数，写入 usage.server_tool_use
 }
 
 func newMessageStream(c *gin.Context, model string, prompt service.Prompt) *messageStream {
-	stream := &messageStream{newSSE(c), -1}
+	stream := &messageStream{sseWriter: newSSE(c), index: -1}
 	stream.event("message_start", gin.H{
 		"type": "message_start",
 		"message": gin.H{
@@ -232,9 +249,17 @@ func (s *messageStream) close() {
 }
 
 func (s *messageStream) stop(reason string, outputTokens int) {
+	s.stopSeq(reason, nil, outputTokens)
+}
+
+func (s *messageStream) stopSeq(reason string, stopSequence any, outputTokens int) {
+	usage := gin.H{"output_tokens": outputTokens}
+	if s.searches > 0 {
+		usage["server_tool_use"] = searchUsage(s.searches)
+	}
 	s.event("message_delta", gin.H{
-		"type": "message_delta", "delta": gin.H{"stop_reason": reason, "stop_sequence": nil},
-		"usage": gin.H{"output_tokens": outputTokens},
+		"type": "message_delta", "delta": gin.H{"stop_reason": reason, "stop_sequence": stopSequence},
+		"usage": usage,
 	})
 	s.event("message_stop", gin.H{"type": "message_stop"})
 }
@@ -242,16 +267,19 @@ func (s *messageStream) stop(reason string, outputTokens int) {
 func anthropicStream(c *gin.Context, model string, prompt service.Prompt) {
 	stream := newMessageStream(c, model, prompt)
 	stream.open(gin.H{"type": "text", "text": ""})
-	text, err := runAndCollect("messages", model, true, prompt, func(text string) {
+	text, matched, err := runAndCollectStop("messages", model, true, prompt, func(text string) {
 		stream.delta(gin.H{"type": "text_delta", "text": text})
 	})
-	stop := "end_turn"
+	stop, stopSeq := "end_turn", any(nil)
+	if matched != "" {
+		stop, stopSeq = "stop_sequence", matched
+	}
 	if err != nil {
 		stream.delta(gin.H{"type": "text_delta", "text": "\n[错误] " + err.Error()})
-		stop = "error"
+		stop, stopSeq = "error", nil
 	}
 	stream.close()
-	stream.stop(stop, tokenCount(text))
+	stream.stopSeq(stop, stopSeq, tokenCount(text))
 }
 
 // anthropicToolNonStream 带 tools 的非流式：解析标签协议后输出 content blocks。
