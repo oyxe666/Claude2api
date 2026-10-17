@@ -2420,6 +2420,49 @@ body[data-page="login"] .err {
 .price-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) auto; gap: 8px; align-items: center; }
 .usage-table th, .usage-table td { white-space: nowrap; }
 
+/* ===== DESKTOP v3：统一圆角/阴影/字体，收窄侧栏，按钮分主次 ===== */
+:root {
+  --radius: 10px;
+  --radius-sm: 8px;
+  --surface: #fff;
+  --surface-2: #fcfbf7;
+  --shadow-1: 0 1px 2px rgba(45, 38, 28, 0.05);
+  --shadow-2: 0 8px 22px rgba(45, 38, 28, 0.09);
+}
+.log-detail-page-head h2,
+.log-section-head h3 { font-family: inherit; }
+.page-head h2 { font-size: 22px; }
+#page-chat .page-head h2 { font-size: 22px; }
+.grave-chart-wrap { border-radius: var(--radius); }
+#page-usage .table-area { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.btn, .btn-sm, .page-btn, .inp, .search-inp, .sel { border-radius: var(--radius-sm); }
+.api-card, .model-strip, .chat-composer, .log-detail-meta { border-radius: var(--radius); }
+.model-strip { background: var(--surface-2); }
+.toolbar { gap: 8px; margin-bottom: 12px; }
+.btn-quiet { color: var(--muted); border-color: var(--border); }
+.btn-quiet:hover:not(:disabled) { color: var(--err); border-color: var(--err); background: #fbf1ef; }
+@media (min-width: 721px) {
+  .sidebar { width: 188px; padding: 24px 14px; }
+  .main { padding: 28px 32px 64px; }
+  .nav-item { border-left: 0; border-radius: var(--radius-sm); padding: 9px 12px; }
+  .nav-item.active { background: #f0ede4; box-shadow: inset 3px 0 0 var(--accent); }
+  .page-head { border-bottom: 0; padding-bottom: 12px; margin-bottom: 12px; }
+  .quota-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+}
+
+/* ===== 导入历史 ===== */
+.modal-xl { width: min(860px, calc(100vw - 40px)); }
+.history-table td { vertical-align: middle; }
+.history-key { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 720px) {
+  .history-table, .history-table tbody, .history-table tr, .history-table td { display: block; width: 100%; }
+  .history-table thead { display: none; }
+  .history-table tr { margin-bottom: 10px; padding: 8px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius); }
+  .history-table td[data-label] { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-bottom: 1px dashed var(--border); text-align: right; word-break: break-all; }
+  .history-table td[data-label]::before { content: attr(data-label); flex: none; color: var(--muted); font-size: 12px; text-align: left; }
+  .history-key { max-width: none; white-space: normal; }
+}
+
 /* ===== MOBILE v2 ===== */
 @media (max-width: 720px) {
   /* --- 2. 顶栏：品牌+退出一行，菜单横向滑动标签条，吸顶，适配安全区 --- */

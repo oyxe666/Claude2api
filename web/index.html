@@ -114,8 +114,9 @@
             <button id="btn-refresh" class="btn" title="只重新读取本地数据，不会向 Claude 发任何请求" aria-label="刷新列表：只重新读取本地数据，不会向 Claude 发任何请求">刷新列表</button>
             <button id="btn-check-all" class="btn" title="会逐个向 Claude 发请求（每个账号间隔 3~8 秒），约需 1 分钟，可随时点停止">检查账号</button>
             <button id="btn-import" class="btn">批量导入</button>
-            <button id="btn-del-expired" class="btn">删除失效</button>
-            <button id="btn-disable-all" class="btn" title="全部账号停用，不参与调用（不删除）">全部停用</button>
+            <button id="btn-import-history" class="btn">导入历史</button>
+            <button id="btn-del-expired" class="btn btn-quiet">删除失效</button>
+            <button id="btn-disable-all" class="btn btn-quiet" title="全部账号停用，不参与调用（不删除）">全部停用</button>
             <button id="btn-enable-all" class="btn" title="全部账号恢复参与调用">全部启用</button>
             <div class="seg" role="group" aria-label="账号视图">
               <button type="button" class="seg-btn active" data-view="cards" aria-pressed="true">卡片</button>
@@ -731,6 +732,24 @@
           />
           <button id="pool-key-submit" class="btn btn-primary">确定</button>
           <div id="pool-key-err" class="key-err"></div>
+        </div>
+      </div>
+    </div>
+    <div id="history-mask" class="modal-mask hidden">
+      <div class="modal modal-lg modal-xl">
+        <div class="modal-head">
+          <div class="modal-title">导入历史</div>
+          <button id="history-close" class="btn-link modal-x" aria-label="关闭导入历史">×</button>
+        </div>
+        <div class="modal-body detail-body">
+          <p class="block-desc">记录每次导入的时间、邮箱和 sessionKey。sessionKey 等同登录凭据，请勿截图外传。</p>
+          <div class="table-area">
+            <table class="acc-table history-table">
+              <thead><tr><th>时间</th><th>邮箱</th><th>结果</th><th>sessionKey</th></tr></thead>
+              <tbody id="history-body"><tr><td colspan="4" class="empty">加载中…</td></tr></tbody>
+            </table>
+          </div>
+          <div class="pager" id="history-pager"></div>
         </div>
       </div>
     </div>

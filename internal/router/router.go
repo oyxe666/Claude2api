@@ -26,6 +26,7 @@ func NewMainEngine() *gin.Engine {
 
 	admin.GET("/accounts", handler.AdminAccounts)
 	admin.POST("/accounts/import", handler.AdminImportAccounts)
+	admin.GET("/import-history", handler.AdminImportHistory)
 	admin.POST("/accounts/refresh", handler.AdminRefreshAccount)
 	admin.POST("/accounts/disable", handler.AdminSetAccountDisabled)
 	admin.POST("/accounts/disable-all", handler.AdminSetAllAccountsDisabled)

@@ -25,6 +25,9 @@ function clearAuth() {
   localStorage.removeItem(AUTH_ROLE_KEY);
 }
 
+const PAGE_KEY = "claude2api.page";
+const ADMIN_PAGES = ["pool", "accounts", "keys", "api", "chat", "logs", "graveyard", "usage", "system"];
+
 function initAdmin(initialPage = "accounts", currentRole = "admin") {
   const adminRoot = document.querySelector(".view-admin");
   const $ = (sel) => adminRoot.querySelector(sel);
@@ -477,6 +480,42 @@ function setProgress(id, completed, total, text = `${completed}/${total}`) {
   box.querySelector(".task-progress-text").textContent = text;
 }
 
+// ---------- 导入历史 ----------
+let historyPage = 1;
+const HISTORY_PAGE_SIZE = 20;
+const HISTORY_STATUS = { imported: "成功", duplicate: "重复", failed: "失败" };
+async function loadImportHistory() {
+  const body = $("#history-body");
+  const pager = $("#history-pager");
+  try {
+    const data = await api(`/api/import-history?limit=${HISTORY_PAGE_SIZE}&offset=${(historyPage - 1) * HISTORY_PAGE_SIZE}`);
+    const rows = data.records || [];
+    const total = data.total || 0;
+    if (!rows.length) {
+      body.innerHTML = `<tr><td colspan="4" class="empty">暂无导入记录</td></tr>`;
+      pager.innerHTML = "";
+      return;
+    }
+    body.innerHTML = rows
+      .map(
+        (r) => `<tr>
+        <td data-label="时间" class="mono">${esc(fmtTime(r.created_at))}</td>
+        <td data-label="邮箱">${esc(r.email || "—")}</td>
+        <td data-label="结果" title="${esc(r.note || "")}">${esc(HISTORY_STATUS[r.status] || r.status)}</td>
+        <td data-label="sessionKey" class="mono history-key">${esc(r.session_key || "")}</td>
+      </tr>`,
+      )
+      .join("");
+    const pages = Math.max(1, Math.ceil(total / HISTORY_PAGE_SIZE));
+    pager.innerHTML =
+      `<button class="page-btn" data-hpage="${historyPage - 1}"${historyPage <= 1 ? " disabled" : ""}>上一页</button>` +
+      `<span class="pager-info">${historyPage}/${pages} 页 · 共 ${total} 条</span>` +
+      `<button class="page-btn" data-hpage="${historyPage + 1}"${historyPage >= pages ? " disabled" : ""}>下一页</button>`;
+  } catch (e) {
+    body.innerHTML = `<tr><td colspan="4" class="empty">加载失败：${esc(e.message)}</td></tr>`;
+  }
+}
+
 async function importAccounts() {
   const text = $("#import-keys").value;
   if (!text.trim()) return showMsg("请输入 sessionKey", "err");
@@ -496,14 +535,20 @@ async function importAccounts() {
         if (!line) continue;
         result = JSON.parse(line.slice(5));
         btn.textContent = result.done ? "导入完成" : "导入中…";
-        setProgress("#import-progress", result.completed ?? result.total, result.total, `成功 ${result.imported}，失败 ${result.failed}`);
+        setProgress("#import-progress", result.completed ?? result.total, result.total, `成功 ${result.imported}，重复 ${result.duplicated || 0}，失败 ${result.failed}`);
       }
       if (done) break;
     }
     $("#import-keys").value = "";
     $("#import-mask").classList.add("hidden");
     await loadAccounts();
-    showMsg(`导入完成：成功 ${result.imported}，失败 ${result.failed}`, result.failed ? "err" : "ok");
+    const dups = result.duplicate_emails || [];
+    if (dups.length) {
+      const shown = dups.slice(0, 3).join("、") + (dups.length > 3 ? ` 等 ${dups.length} 个` : "");
+      showMsg(`导入完成：成功 ${result.imported}，失败 ${result.failed}。已存在、未改动：${shown}`, "err");
+    } else {
+      showMsg(`导入完成：成功 ${result.imported}，失败 ${result.failed}`, result.failed ? "err" : "ok");
+    }
   } catch (e) {
     showMsg("导入失败: " + e.message, "err");
   } finally {
@@ -1016,8 +1061,9 @@ async function sendTestChat() {
   }
 }
 
-function switchPage(name) {
+function switchPage(name, opts = {}) {
   if (currentRole !== "admin" && name !== "pool") return;
+  PrefsUI.saveChoice(PrefsUI.safeStorage(window), PAGE_KEY, name === "log-detail" ? "logs" : name);
   document
     .querySelectorAll(".nav-item")
     .forEach((b) => b.classList.toggle("active", b.dataset.page === (name === "log-detail" ? "logs" : name)));
@@ -1030,7 +1076,7 @@ function switchPage(name) {
   if (name === "system") loadConfig();
   if (name === "keys") loadKeys();
   if (name === "usage") loadUsage();
-  if (name === "logs") loadLogs();
+  if (name === "logs" && !opts.keep) loadLogs();
   if (name === "graveyard") {
     setGraveTab(PrefsUI.loadChoice(PrefsUI.safeStorage(window), GRAVE_TAB_KEY, ["overview", "grave"], "overview"));
     loadGraveyard();
@@ -1271,6 +1317,7 @@ async function deleteKey(id) {
 }
 
 let logsPage = 1;
+let logsScrollY = 0;
 let logsPageSize = 10;
 logsPageSize = PrefsUI.loadPageSize(PrefsUI.safeStorage(window), LOGS_PAGESIZE_KEY, PrefsUI.optionValues($("#logs-page-size")), 10);
 $("#logs-page-size").value = String(logsPageSize);
@@ -1354,6 +1401,7 @@ async function trimLogs() {
 }
 
 async function showLogDetail(id) {
+  logsScrollY = window.scrollY;
   try {
     const data = await api(`/api/logs/${id}`);
     const l = data.log;
@@ -1491,6 +1539,21 @@ $("#btn-import").addEventListener("click", () => {
   $("#import-keys").focus();
 });
 $("#btn-import-submit").addEventListener("click", importAccounts);
+$("#btn-import-history").addEventListener("click", () => {
+  historyPage = 1;
+  $("#history-mask").classList.remove("hidden");
+  loadImportHistory();
+});
+$("#history-close").addEventListener("click", () => $("#history-mask").classList.add("hidden"));
+$("#history-mask").addEventListener("click", (e) => {
+  if (e.target === $("#history-mask")) $("#history-mask").classList.add("hidden");
+});
+$("#history-pager").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-hpage]");
+  if (!b || b.disabled) return;
+  historyPage = Number(b.dataset.hpage) || 1;
+  loadImportHistory();
+});
 for (const id of ["#btn-import-cancel", "#import-close"]) {
   $(id).addEventListener("click", () =>
     $("#import-mask").classList.add("hidden"),
@@ -1612,7 +1675,10 @@ $("#logs-body").addEventListener("click", (e) => {
   const row = e.target.closest("tr[data-log-id]");
   if (btn || (row && !e.target.closest("input"))) showLogDetail(btn?.dataset.id || row.dataset.logId);
 });
-$("#log-detail-back").addEventListener("click", () => switchPage("logs"));
+$("#log-detail-back").addEventListener("click", () => {
+  switchPage("logs", { keep: true });
+  window.scrollTo(0, logsScrollY);
+});
 $("#log-detail-body").addEventListener("click", (e) => {
   const item = e.target.closest(".log-nav-item");
   if (!item) return;
@@ -1642,6 +1708,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !$("#detail-mask").classList.contains("hidden"))
     closeDetail();
   if (e.key === "Escape") $("#import-mask").classList.add("hidden");
+  if (e.key === "Escape") $("#history-mask").classList.add("hidden");
 });
 
 $("#status-tabs").addEventListener("click", (e) => {
@@ -1651,10 +1718,17 @@ $("#status-tabs").addEventListener("click", (e) => {
   curPage = 1;
   $("#status-tabs")
     .querySelectorAll(".tab")
-    .forEach((t) => t.classList.remove("active"));
+    .forEach((t) => {
+      t.classList.remove("active");
+      t.setAttribute("aria-pressed", "false");
+    });
   tab.classList.add("active");
+  tab.setAttribute("aria-pressed", "true");
   renderTable();
 });
+$("#status-tabs")
+  .querySelectorAll(".tab")
+  .forEach((t) => t.setAttribute("aria-pressed", t.classList.contains("active") ? "true" : "false"));
 
 let searchTimer = null;
 $("#search").addEventListener("input", (e) => {
@@ -1991,7 +2065,10 @@ function resolvePage() {
   return {
     page: "admin",
     role: authRole,
-    initialPage: "pool",
+    initialPage:
+      authRole === "admin"
+        ? PrefsUI.loadChoice(PrefsUI.safeStorage(window), PAGE_KEY, ADMIN_PAGES, "pool")
+        : "pool",
   };
 }
 

@@ -56,7 +56,7 @@ func openDB(path string) (*gorm.DB, error) {
 	if sqlDB, err := conn.DB(); err == nil {
 		sqlDB.SetMaxOpenConns(1)
 	}
-	if err := conn.AutoMigrate(&Account{}, &APIKey{}, &APILog{}, &Grave{}); err != nil {
+	if err := conn.AutoMigrate(&Account{}, &APIKey{}, &APILog{}, &Grave{}, &ImportRecord{}); err != nil {
 		return nil, fmt.Errorf("建表失败: %w", err)
 	}
 	return conn, nil

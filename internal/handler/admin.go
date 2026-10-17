@@ -44,18 +44,26 @@ func AdminImportAccounts(c *gin.Context) {
 		fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", event, b)
 		c.Writer.Flush()
 	}
-	imported, failed := 0, 0
-	send("progress", gin.H{"total": len(items), "completed": 0, "imported": 0, "failed": 0})
+	imported, failed, duplicated := 0, 0, 0
+	dupEmails := []string{}
+	send("progress", gin.H{"total": len(items), "completed": 0, "imported": 0, "failed": 0, "duplicated": 0})
 	for result := range importAccounts(items) {
-		if result.err != "" {
+		switch {
+		case result.dup:
+			duplicated++
+			dupEmails = append(dupEmails, result.email)
+			repository.RecordImport(result.email, result.key, repository.ImportDuplicate, "账号已存在，未做任何改动")
+		case result.err != "":
 			failed++
-		} else {
+			repository.RecordImport(result.email, result.key, repository.ImportFailed, result.err)
+		default:
 			imported++
+			repository.RecordImport(result.email, result.key, repository.ImportOK, "")
 		}
-		send("progress", gin.H{"total": len(items), "completed": imported + failed, "imported": imported, "failed": failed, "email": result.email, "error": result.err})
+		send("progress", gin.H{"total": len(items), "completed": imported + failed + duplicated, "imported": imported, "failed": failed, "duplicated": duplicated, "email": result.email, "error": result.err})
 	}
-	send("done", gin.H{"done": true, "total": len(items), "imported": imported, "failed": failed})
-	slog.Info("[导入] 批量导入完成", "total", len(items), "imported", imported, "failed", failed)
+	send("done", gin.H{"done": true, "total": len(items), "imported": imported, "failed": failed, "duplicated": duplicated, "duplicate_emails": dupEmails})
+	slog.Info("[导入] 批量导入完成", "total", len(items), "imported", imported, "failed", failed, "duplicated", duplicated)
 }
 
 func parseImportSessionKeys(text string) []string {
@@ -70,7 +78,24 @@ func parseImportSessionKeys(text string) []string {
 	return items
 }
 
-type importResult struct{ email, err string }
+// AdminImportHistory 返回导入历史（含 sessionKey，仅管理员可读）。
+func AdminImportHistory(c *gin.Context) {
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	if limit <= 0 || limit > 200 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	records, total := repository.ListImports(limit, offset)
+	c.JSON(http.StatusOK, gin.H{"records": records, "total": total})
+}
+
+type importResult struct {
+	email, key, err string
+	dup             bool
+}
 
 func importAccounts(items []string) <-chan importResult {
 	results := make(chan importResult, len(items))
@@ -80,10 +105,15 @@ func importAccounts(items []string) <-chan importResult {
 		// ponytail: 固定 10 并发，上游限流变化时再改为配置项。
 		sem := make(chan struct{}, 10)
 		slog.Info("[导入] 批量导入开始", "total", len(items))
+		known := repository.AccountSessionKeys()
 		for _, key := range items {
 			wg.Go(func() {
 				sem <- struct{}{}
 				defer func() { <-sem }()
+				if email, ok := known[key]; ok {
+					results <- importResult{email: email, key: key, dup: true}
+					return
+				}
 				client := service.NewClaudeAI(key, config.Get().Proxy, key)
 				info, err := client.GetUserInfo()
 				if err != nil || info == nil || info.Email == "" {
@@ -92,15 +122,19 @@ func importAccounts(items []string) <-chan importResult {
 					if err != nil && strings.Contains(err.Error(), "account_session_invalid") {
 						message = "sessionKey 已失效或格式错误"
 					}
-					results <- importResult{err: message}
+					results <- importResult{key: key, err: message}
+					return
+				}
+				if repository.AccountByEmail(info.Email) != nil {
+					results <- importResult{email: info.Email, key: key, dup: true}
 					return
 				}
 				if err := repository.UpsertAccount(&repository.Account{Email: info.Email, OrgUUID: info.OrgUUID, Cookies: map[string]string{"sessionKey": key}, Status: "active"}); err != nil {
 					slog.Warn("[导入] 保存账号失败", "email", info.Email, "err", err)
-					results <- importResult{email: info.Email, err: "保存账号失败"}
+					results <- importResult{email: info.Email, key: key, err: "保存账号失败"}
 					return
 				}
-				results <- importResult{email: info.Email}
+				results <- importResult{email: info.Email, key: key}
 			})
 		}
 		wg.Wait()
